@@ -29,6 +29,10 @@ const COMMENT_LIST_LIMIT = 300;
 const MAX_REPORTS = 60; // 1つの共有で、承認待ちの報告に置ける件数
 const MAX_REPORTS_PER_MATCH = 3; // 1試合あたり
 const JOIN_MISS_MAX = 30; // 存在しない共有コードを10分間に試せる回数（IP ごと）
+const LOGIN_FREE_TRIES = 5; // 運営ログインの失敗: この回数までは待たせない（IP ごと・共有ごと）
+const LOGIN_FIRST_WAIT = 30; // 6回目の失敗の後の待ち時間（秒）。以後は2倍ずつ延ばす
+const LOGIN_MAX_WAIT = 60 * 60; // 待ち時間の上限（秒）
+const LOGIN_WINDOW = 24 * 60 * 60; // 最初の失敗からこの時間たつと、失敗の数を数え直す
 const NAME_MAX = 20;
 const COMMENT_MAX = 200;
 const PASSWORD_MIN = 6;
@@ -45,6 +49,8 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, match_id TEXT NOT NULL, outcome TEXT NOT NULL, score1 INTEGER, score2 INTEGER, p1 TEXT, p2 TEXT, name TEXT NOT NULL, at INTEGER NOT NULL, who TEXT NOT NULL)',
   'CREATE INDEX IF NOT EXISTS idx_reports_code ON reports (code, id)',
   'CREATE TABLE IF NOT EXISTS limits (k TEXT PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS login_fails (k TEXT PRIMARY KEY, n INTEGER NOT NULL, first_at INTEGER NOT NULL, lock_until INTEGER NOT NULL)',
+  'CREATE INDEX IF NOT EXISTS idx_login_fails_clean ON login_fails (first_at, lock_until)',
 ];
 
 const CORS = {
@@ -270,6 +276,7 @@ async function createRoom(env, request) {
     env.DB.prepare(`DELETE FROM reports WHERE code IN (SELECT code FROM rooms WHERE NOT ${ACTIVE_SQL})`).bind(cutoff, cutoff),
     env.DB.prepare(`DELETE FROM rooms WHERE NOT ${ACTIVE_SQL}`).bind(cutoff, cutoff),
     env.DB.prepare('DELETE FROM limits WHERE until < ?').bind(t),
+    env.DB.prepare('DELETE FROM login_fails WHERE first_at < ? AND lock_until < ?').bind(t - LOGIN_WINDOW, t),
   ]);
 
   const adminPw = await hashPassword(body.adminPassword);
@@ -287,22 +294,52 @@ async function createRoom(env, request) {
   throw new HttpError(500, '共有コードを作れませんでした。もう一度お試しください');
 }
 
+/** 失敗の n 回目の後に課す待ち時間（秒）。LOGIN_FREE_TRIES 回までは 0 */
+function loginWaitFor(n) {
+  if (n <= LOGIN_FREE_TRIES) return 0;
+  return Math.min(LOGIN_MAX_WAIT, LOGIN_FIRST_WAIT * 2 ** (n - LOGIN_FREE_TRIES - 1));
+}
+
+/** 今ロックされている残りの秒数（0 ならロックなし） */
+async function loginLockRemaining(env, key) {
+  const row = await env.DB.prepare('SELECT lock_until FROM login_fails WHERE k = ?').bind(key).first();
+  return row ? Math.max(0, row.lock_until - now(env)) : 0;
+}
+
+/** 失敗を1回数え、必要なら待ち時間を決める。数えは1回の更新で行う（同時に来た要求でも、数えが抜けない） */
+async function recordLoginFailure(env, key) {
+  const t = now(env);
+  await env.DB.prepare('INSERT OR IGNORE INTO login_fails (k, n, first_at, lock_until) VALUES (?, 0, ?, 0)').bind(key, t).run();
+  const row = await env.DB.prepare(`UPDATE login_fails
+      SET n = CASE WHEN ? - first_at > ? THEN 1 ELSE n + 1 END,
+          first_at = CASE WHEN ? - first_at > ? THEN ? ELSE first_at END
+      WHERE k = ? RETURNING n`)
+    .bind(t, LOGIN_WINDOW, t, LOGIN_WINDOW, t, key).first();
+  // 待ちの終わりは遅いほうを残す（同時の要求で、後から書いた短い待ちで上書きしない）
+  await env.DB.prepare('UPDATE login_fails SET lock_until = MAX(lock_until, ?) WHERE k = ?').bind(t + loginWaitFor(row.n), key).run();
+}
+
 async function login(env, request, code) {
   const body = await readJson(request, MAX_BODY_CHARS);
-  const ipKey = `fl:${code}:${await sha256Hex(clientIp(request))}`;
-  const codeKey = `fc:${code}`;
-  if ((await isLimited(env, ipKey, 10)) || (await isLimited(env, codeKey, 60))) {
-    throw new HttpError(429, 'パスワードの間違いが続いたため、しばらく入力できません。10分ほど待ってください');
+  const ipHash = await sha256Hex(clientIp(request));
+  // 存在しない共有コードの試行は、join と同じ上限（IP ごと）で止める。記録を増やし続けさせない
+  const missKey = `jn:${ipHash}`;
+  if (await isLimited(env, missKey, JOIN_MISS_MAX)) throw new HttpError(429, '存在しない共有コードの入力が続いたため、しばらく入れません。10分ほど待ってください');
+  const failKey = `lf:${code}:${ipHash}`;
+  const wait = await loginLockRemaining(env, failKey);
+  if (wait > 0) {
+    throw new HttpError(429, `パスワードの間違いが続いたため、しばらく入力できません。あと約${Math.ceil(wait / 60)}分待ってください`);
   }
   const room = await findRoom(env, 'code, admin_pw, admin_ver, viewer_ver', code);
   const pw = typeof body.password === 'string' ? body.password.slice(0, PASSWORD_MAX) : '';
   // 共有コードの有無で処理時間が変わらないよう、存在しない場合も同じ計算をする
   const ok = await verifyPassword(pw, room ? room.admin_pw : DUMMY_HASH);
   if (!room || !ok) {
-    await countHit(env, ipKey, 600);
-    await countHit(env, codeKey, 600);
+    if (room) await recordLoginFailure(env, failKey);
+    else await countHit(env, missKey, 600);
     throw new HttpError(401, '共有コードまたはパスワードが違います');
   }
+  await env.DB.prepare('DELETE FROM login_fails WHERE k = ?').bind(failKey).run();
   return json({ ok: true, code, ...(await issueToken(env, room, 'admin')) });
 }
 

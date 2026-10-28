@@ -12,7 +12,10 @@ permissions:
 
 jobs:
   review:
-    uses: antongulin/robin/.github/workflows/review.yml@main
+    # 第三者のワークフローは、コミット SHA に固定する（@main のままだと、参照先が書き換わると
+    # シークレット付きで任意のコードが動く）。更新するときは、SHA を確かめてから書き換える。
+    # 固定した時点の main: 3c3c2adf29f06277761f827c64ee9d08d90c00c6（chore: release 2.12.3 (#118)）
+    uses: antongulin/robin/.github/workflows/review.yml@3c3c2adf29f06277761f827c64ee9d08d90c00c6
     with:
       review-on-synchronize: true
     secrets:
