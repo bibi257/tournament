@@ -86,15 +86,50 @@ test('運営ログイン: 間違いと、存在しない共有コードは区別
   assert.equal(noRoom.data.error, wrong.data.error);
 });
 
-test('運営ログイン: 10回間違えるとロックされ、正しい入力でも一時的に拒否される', async () => {
+test('運営ログイン: 5回までは待たせず、6回目の失敗から待ち時間が始まる。正しい入力は待ちの間は拒否される', async () => {
   const { api, clock } = setup();
   const { code } = await newRoom(api);
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 6; i++) {
     assert.equal((await api('POST', `/api/rooms/${code}/login`, { body: { password: 'wrong-pass' } })).status, 401);
   }
   const locked = await api('POST', `/api/rooms/${code}/login`, { body: { password: ADMIN } });
   assert.equal(locked.status, 429);
-  clock.t += 601;
+  clock.t += 29;
+  assert.equal((await api('POST', `/api/rooms/${code}/login`, { body: { password: ADMIN } })).status, 429);
+  clock.t += 2;
+  assert.equal((await api('POST', `/api/rooms/${code}/login`, { body: { password: ADMIN } })).status, 200);
+});
+
+test('運営ログイン: 待ち時間は失敗のたびに2倍になり、1時間で止まる。成功すると数えが消える', async () => {
+  const { api, clock } = setup();
+  const { code } = await newRoom(api);
+  const wrong = () => api('POST', `/api/rooms/${code}/login`, { body: { password: 'wrong-pass' } });
+  for (let i = 0; i < 5; i++) await wrong();
+  assert.equal((await wrong()).status, 401); // 6回目: 30秒
+  clock.t += 31;
+  assert.equal((await wrong()).status, 401); // 7回目: 60秒
+  clock.t += 59;
+  assert.equal((await api('POST', `/api/rooms/${code}/login`, { body: { password: ADMIN } })).status, 429);
+  clock.t += 2;
+  for (let i = 0; i < 20; i++) { clock.t += 3600; await wrong(); } // 十数回の失敗のあとも、待ちは1時間まで
+  clock.t += 3601;
+  assert.equal((await wrong()).status, 401);
+  clock.t += 3601;
+  assert.equal((await api('POST', `/api/rooms/${code}/login`, { body: { password: ADMIN } })).status, 200);
+  for (let i = 0; i < 5; i++) await wrong(); // 成功のあとは数えが0から
+  assert.equal((await wrong()).status, 401);
+  assert.equal((await api('POST', `/api/rooms/${code}/login`, { body: { password: ADMIN } })).status, 429);
+});
+
+test('運営ログイン: ある IP の失敗は、別の IP からの正しい入力を止めない（共有コード全体のロックはしない）', async () => {
+  const { api, setIp } = setup();
+  const { code } = await newRoom(api);
+  for (let ip = 1; ip <= 6; ip++) {
+    setIp(`198.51.100.${ip}`);
+    for (let k = 0; k < 10; k++) await api('POST', `/api/rooms/${code}/login`, { body: { password: 'wrong-pass' } });
+    assert.equal((await api('POST', `/api/rooms/${code}/login`, { body: { password: ADMIN } })).status, 429, `IP ${ip} は止まる`);
+  }
+  setIp('192.0.2.77');
   assert.equal((await api('POST', `/api/rooms/${code}/login`, { body: { password: ADMIN } })).status, 200);
 });
 
