@@ -557,3 +557,29 @@ test('結果の報告: 運営用パスワードの変更後、古い運営トー
   assert.equal((await api('GET', `/api/rooms/${r.code}/sync?rev=0&crev=0`, { token: r.token })).status, 401);
   assert.equal((await api('DELETE', `/api/rooms/${r.code}/reports/${id}`, { token: r.token })).status, 401);
 });
+
+test('運営ログイン: 存在しない共有コードの試行は、失敗の記録を増やさず、IP ごとに止まる', async () => {
+  const { api, env } = setup();
+  await newRoom(api);
+  const unknown = () => api('POST', '/api/rooms/abcdefgh/login', { body: { password: 'wrong-pass' } });
+  for (let i = 0; i < 30; i++) assert.equal((await unknown()).status, 401);
+  assert.equal((await unknown()).status, 429);
+  assert.equal(env.DB._raw.prepare('SELECT COUNT(*) AS n FROM login_fails').get().n, 0);
+});
+
+test('運営ログイン: 同時に届いた失敗も、1件ずつ数える（数えが抜けない）', async () => {
+  const { api, env } = setup();
+  const { code } = await newRoom(api);
+  // DB の応答に遅れを入れ、要求どうしが読み書きの間で交互に進むようにする（遅れがないと競合が起きない）
+  const real = env.DB.prepare;
+  const wrap = (st) => ({
+    bind: (...p) => wrap(st.bind(...p)),
+    first: async (c) => { await new Promise((r) => setTimeout(r, 2)); return st.first(c); },
+    run: async () => { await new Promise((r) => setTimeout(r, 2)); return st.run(); },
+    all: async () => { await new Promise((r) => setTimeout(r, 2)); return st.all(); },
+  });
+  env.DB.prepare = (sql) => wrap(real(sql));
+  await Promise.all(Array.from({ length: 20 }, () => api('POST', `/api/rooms/${code}/login`, { body: { password: 'wrong-pass' } })));
+  env.DB.prepare = real;
+  assert.equal(env.DB._raw.prepare('SELECT n FROM login_fails').get().n, 20);
+});

@@ -50,6 +50,7 @@ const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS idx_reports_code ON reports (code, id)',
   'CREATE TABLE IF NOT EXISTS limits (k TEXT PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL)',
   'CREATE TABLE IF NOT EXISTS login_fails (k TEXT PRIMARY KEY, n INTEGER NOT NULL, first_at INTEGER NOT NULL, lock_until INTEGER NOT NULL)',
+  'CREATE INDEX IF NOT EXISTS idx_login_fails_clean ON login_fails (first_at, lock_until)',
 ];
 
 const CORS = {
@@ -305,19 +306,26 @@ async function loginLockRemaining(env, key) {
   return row ? Math.max(0, row.lock_until - now(env)) : 0;
 }
 
-/** 失敗を1回数え、必要なら待ち時間を決める。別の共有や別の IP には影響しない */
+/** 失敗を1回数え、必要なら待ち時間を決める。数えは1回の更新で行う（同時に来た要求でも、数えが抜けない） */
 async function recordLoginFailure(env, key) {
   const t = now(env);
-  const row = await env.DB.prepare('SELECT n, first_at FROM login_fails WHERE k = ?').bind(key).first();
-  const fresh = !row || t - row.first_at > LOGIN_WINDOW;
-  const n = fresh ? 1 : row.n + 1;
-  await env.DB.prepare('INSERT OR REPLACE INTO login_fails (k, n, first_at, lock_until) VALUES (?, ?, ?, ?)')
-    .bind(key, n, fresh ? t : row.first_at, t + loginWaitFor(n)).run();
+  await env.DB.prepare('INSERT OR IGNORE INTO login_fails (k, n, first_at, lock_until) VALUES (?, 0, ?, 0)').bind(key, t).run();
+  const row = await env.DB.prepare(`UPDATE login_fails
+      SET n = CASE WHEN ? - first_at > ? THEN 1 ELSE n + 1 END,
+          first_at = CASE WHEN ? - first_at > ? THEN ? ELSE first_at END
+      WHERE k = ? RETURNING n`)
+    .bind(t, LOGIN_WINDOW, t, LOGIN_WINDOW, t, key).first();
+  // 待ちの終わりは遅いほうを残す（同時の要求で、後から書いた短い待ちで上書きしない）
+  await env.DB.prepare('UPDATE login_fails SET lock_until = MAX(lock_until, ?) WHERE k = ?').bind(t + loginWaitFor(row.n), key).run();
 }
 
 async function login(env, request, code) {
   const body = await readJson(request, MAX_BODY_CHARS);
-  const failKey = `lf:${code}:${await sha256Hex(clientIp(request))}`;
+  const ipHash = await sha256Hex(clientIp(request));
+  // 存在しない共有コードの試行は、join と同じ上限（IP ごと）で止める。記録を増やし続けさせない
+  const missKey = `jn:${ipHash}`;
+  if (await isLimited(env, missKey, JOIN_MISS_MAX)) throw new HttpError(429, '存在しない共有コードの入力が続いたため、しばらく入れません。10分ほど待ってください');
+  const failKey = `lf:${code}:${ipHash}`;
   const wait = await loginLockRemaining(env, failKey);
   if (wait > 0) {
     throw new HttpError(429, `パスワードの間違いが続いたため、しばらく入力できません。あと約${Math.ceil(wait / 60)}分待ってください`);
@@ -327,7 +335,8 @@ async function login(env, request, code) {
   // 共有コードの有無で処理時間が変わらないよう、存在しない場合も同じ計算をする
   const ok = await verifyPassword(pw, room ? room.admin_pw : DUMMY_HASH);
   if (!room || !ok) {
-    await recordLoginFailure(env, failKey);
+    if (room) await recordLoginFailure(env, failKey);
+    else await countHit(env, missKey, 600);
     throw new HttpError(401, '共有コードまたはパスワードが違います');
   }
   await env.DB.prepare('DELETE FROM login_fails WHERE k = ?').bind(failKey).run();
