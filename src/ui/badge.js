@@ -36,3 +36,8 @@ export function nameHtml(text) {
   const t = String(text ?? '');
   return t.endsWith(ABSENT_MARK) ? `${h(t.slice(0, -ABSENT_MARK.length))}${absentBadge()}` : h(t);
 }
+
+/** コメントの投稿者が運営なら「運営」の印（PR4・D63）。role が無い古い応答では何も出さない */
+export function commentRoleBadge(c) {
+  return c && c.role === 'admin' ? '<span class="badge badge-admin">運営</span>' : '';
+}
