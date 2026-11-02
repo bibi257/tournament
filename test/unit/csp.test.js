@@ -37,6 +37,13 @@ test('インラインの script と on*= 属性が無い（index.html・画面�
   }
 });
 
+test('connect-src は、サーバーURLが許す localhost・127.0.0.1・[::1]（http）をすべて含む', () => {
+  const c = directive('connect-src');
+  for (const origin of ['http://localhost:*', 'http://127.0.0.1:*', 'http://[::1]:*']) {
+    assert.ok(c.split(' ').includes(origin), `${origin} が無い`);
+  }
+});
+
 test('style-src-attr は unsafe-inline だけ（style 属性は、どうしても要るものだけ）', () => {
   assert.match(csp, /style-src-attr 'unsafe-inline'/);
   assert.equal(directive('style-src'), "style-src 'self'");
