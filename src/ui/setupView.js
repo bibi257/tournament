@@ -40,7 +40,7 @@ export function renderSetup() {
     <div class="stack">
       <div class="card" id="setup-info">
         <h2>大会情報</h2>
-        <div class="form-row"><label for="meta-title">大会名</label><input type="text" id="meta-title" value="${h(st.meta.title)}" maxlength="60" style="flex:1"></div>
+        <div class="form-row"><label for="meta-title">大会名</label><input type="text" id="meta-title" class="field-grow" value="${h(st.meta.title)}" maxlength="60"></div>
         <div class="form-row schedule-row"><label for="meta-date">開催日時</label>
           <input type="date" id="meta-date" value="${h(st.meta.date)}" min="${localToday()}">
           <input type="time" id="meta-time" value="${h(st.meta.time)}" aria-label="開始時刻" ${st.meta.date ? '' : 'disabled'}>
@@ -101,7 +101,7 @@ export function renderSetup() {
       <div class="card" id="setup-tables">
         <h2>卓</h2>
         <div class="form-row"><label for="table-count">使用する卓の数</label>
-          <input type="number" id="table-count" min="1" max="${MAX_TABLES}" value="${st.tables.length}" style="width:6em"></div>
+          <input type="number" id="table-count" class="field-w-6" min="1" max="${MAX_TABLES}" value="${st.tables.length}"></div>
         <p class="hint">各回戦の試合を卓へ順番に割り当てます。卓数より試合が多いときは「時間帯」が2, 3…と分かれます。</p>
         <div class="tables-list">
           ${st.tables.map((t, i) => `<input type="text" class="table-name" data-id="${h(t.id)}" value="${h(t.name)}" maxlength="20" aria-label="卓${i + 1}の名前">`).join('')}
@@ -115,7 +115,7 @@ export function renderSetup() {
             <option value="random" ${s.seedMode === 'random' ? 'selected' : ''}>ランダムに決める</option>
             <option value="pick" ${pick ? 'selected' : ''}>名簿で指名する（チェック）</option>
           </select>
-          ${s.seedMode === 'random' ? `<label for="seed-count">人数</label><input type="number" id="seed-count" min="0" max="${n}" value="${Math.min(s.seedCount, n)}" style="width:5.5em">` : ''}
+          ${s.seedMode === 'random' ? `<label for="seed-count">人数</label><input type="number" id="seed-count" class="field-w-55" min="0" max="${n}" value="${Math.min(s.seedCount, n)}">` : ''}
           ${pick ? `<span class="muted">指名 ${seedN}人</span>` : ''}</div>
         <p class="hint">${s.seedMode === 'random' ? '表を作成（作り直し）するたびに、全員から抽選します。' : pick ? '「参加者」の名簿でチェックした選手がシードです。' : ''}${n >= 2 ? `枠 ${size}・1回戦不戦（シード上位から） ${size - n}枠` : ''}</p>
         <div class="form-row"><label for="placement">シード以外の配置</label>

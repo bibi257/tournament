@@ -827,3 +827,9 @@ table.editions td.ops { white-space: nowrap; }
   .bracket-card .bracket-wrap { display: block !important; }
   #panel-comments, .share-chip, .edition-banner, #call-screen, #qr-dialog, .qualify { display: none !important; }
 }
+
+/* 入力欄の幅（style 属性を使わないため。D62） */
+input.field-w-5 { width: 5em; }
+input.field-w-55 { width: 5.5em; }
+input.field-w-6 { width: 6em; }
+input.field-grow { flex: 1; }
