@@ -401,7 +401,8 @@ async function putState(env, request, code) {
   requireAdmin(auth);
   // 同じ秒に続けて送るのを止める（rev 1 以上）。通常の送信は 1.5 秒以上あけるので影響しない。
   // rev 0（共有を作った直後の最初の送信）は判定しない（D61）
-  if (auth.room.rev >= 1 && now(env) - auth.room.updated_at < 1) {
+  // 同じ秒（===）だけを判定する。時計が戻ると差が負になり、<1 では誤って 429 になるため（PLAN D61）
+  if (auth.room.rev >= 1 && now(env) === auth.room.updated_at) {
     throw new HttpError(429, '続けて送りすぎです。少し待ってから、もう一度お試しください');
   }
   const body = await readJson(request, MAX_STATE_CHARS + MAX_BODY_CHARS);

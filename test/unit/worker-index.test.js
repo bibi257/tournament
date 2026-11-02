@@ -109,4 +109,13 @@ test('role 列が無い旧スキーマの DB を開くと、列を足し、既�
   assert.equal(again.status, 200);
 });
 
+test('時計が戻っても（送信より過去の時刻でも）誤って 429 にしない', async () => {
+  const { api, clock } = setup();
+  const r = await api('POST', '/api/rooms', { body: { adminPassword: ADMIN, title: 'x' } });
+  const put = () => api('PUT', `/api/rooms/${r.data.code}/state`, { token: r.data.token, body: { state: createState() } });
+  assert.equal((await put()).status, 200);
+  clock.t -= 5; // 時刻の逆行（前回の送信より5秒前）
+  assert.equal((await put()).status, 200);
+});
+
 void createState;
