@@ -9,7 +9,7 @@
 | 項目 | 結果 |
 | --- | --- |
 | `npm test` | 353 / 353 成功（`csp.test.js` 5 件、`share.test.js` に http の4件と `decideJoin` の3件を追加） |
-| `npm run test:e2e` | （下の最終実行で記録） |
+| `npm run test:e2e` | 352 / 352 成功（PR3 で見つけた1件: `status.spec.js` のグレースケールの確認が、インラインの `<style>` を CSP で塞がれた。テストの側を CSSOM に直した） |
 | `csp.spec.js` | 違反 0 件（表の作成・結果入力・CSV/PNG・呼び出し画面、共有・QR） |
 | `shareJoinGuard.spec.js` | 成功。修正前の joinAdmin では失敗することを確認（共有の版が変わる） |
 | `npm run test:electron` | 成功（CSP の下で起動・結果入力・PNG・自動保存） |
