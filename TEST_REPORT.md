@@ -38,6 +38,14 @@
 | 期限切れの定期削除（Cron） | 未実施（任意項目。Cron の数の確認を含め、判断は PLAN D61） |
 | 本番の Cloudflare での確認 | **未検証**（ローカルの Worker・D1 では確認。デプロイ後に `/api/health` と共有の作成を確認） |
 
+## 2026-11-02 PR の CI・確認の指摘への対応（PR1〜PR4 の head で再確認）
+
+- CI の `build`（windows-latest・`npm test`）の失敗の原因: Windows の checkout で `.yml` が CRLF になり、ワークフローの確認が LF 前提の正規表現で失敗していた。確認を LF に正規化し、CRLF の入力で失敗する再発防止テストを追加（旧 helper では失敗することを確認）
+- 同じ秒の判定を `===` に（時計の逆行で誤って 429 にならない。テストを追加し、修正前は失敗を確認）
+- CSP の `connect-src` に `http://[::1]:*` を追加（csp.test.js で確認）
+- 最終（PR4 の head・`feat/comment-admin-badge`）: `npm test` 359 / 359、`npm run test:e2e` 352 / 352、`npm run test:electron` 成功
+- 未検証: GitHub Actions の CI（Windows・Linux）の再実行結果は、push 後に確認
+
 ## 2026-11-02 依存の脆弱性と Actions の権限（PR1・PLAN D60）
 
 | 項目 | 結果 |
