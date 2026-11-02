@@ -8,18 +8,36 @@ import { join } from 'node:path';
 const DIR = join(import.meta.dirname, '..', '..', '.github', 'workflows');
 const read = (name) => readFileSync(join(DIR, name), 'utf8');
 
-// jobs: より前の、ワークフロー直下の permissions ブロック
+// 改行は LF に正規化してから読む（Windows の checkout は CRLF になるため。PR1 の CI で失敗した）
+const lines = (text) => text.replace(/\r\n/g, '\n').split('\n');
+
+// jobs: より前の、ワークフロー直下の permissions ブロック（字下げされた行の並び）
 function topPermissions(text) {
-  const head = text.split(/^jobs:/m)[0];
-  const m = head.match(/^permissions:\n((?:[ \t]+.*\n?)*)/m);
-  return m ? m[1] : null;
+  const ls = lines(text);
+  const jobsAt = ls.findIndex((l) => /^jobs:/.test(l));
+  const head = jobsAt === -1 ? ls : ls.slice(0, jobsAt);
+  const at = head.findIndex((l) => l === 'permissions:');
+  if (at === -1) return null;
+  const body = [];
+  for (const l of head.slice(at + 1)) {
+    if (l.trim() === '') continue;
+    if (!/^[ \t]/.test(l)) break;
+    body.push(l);
+  }
+  return body.join('\n');
 }
 
-// 1つのジョブ（ジョブ名から、次のジョブ名までの範囲）
+// 1つのジョブ（"  名前:" の行から、次の字下げの少ない行まで）
 function jobBlock(text, name) {
-  const re = new RegExp(`^  ${name}:\\n((?:(?:    .*|\\s*)\\n?)*)`, 'm');
-  const m = text.match(re);
-  return m ? m[1] : null;
+  const ls = lines(text);
+  const at = ls.findIndex((l) => l === `  ${name}:`);
+  if (at === -1) return null;
+  const body = [];
+  for (const l of ls.slice(at + 1)) {
+    if (l.trim() !== '' && !/^ {4}/.test(l)) break;
+    body.push(l);
+  }
+  return body.join('\n');
 }
 
 test('windows.yml: 先頭は contents: read、書き込みは別ジョブのみ', () => {
@@ -42,6 +60,13 @@ test('windows.yml: 先頭は contents: read、書き込みは別ジョブのみ'
   assert.match(release, /permissions:\n\s+contents:\s*write/);
   assert.match(release, /download-artifact@/);
   assert.match(release, /runs-on:\s*ubuntu-latest/);
+});
+
+test('Windows の改行（CRLF）でも、権限とジョブを読める（CI の windows-latest で失敗した再発防止）', () => {
+  const crlf = read('windows.yml').replace(/\n/g, '\r\n');
+  assert.match(topPermissions(crlf), /contents:\s*read/);
+  assert.match(jobBlock(crlf, 'release'), /contents:\s*write/);
+  assert.match(topPermissions(read('ci.yml').replace(/\n/g, '\r\n')), /contents:\s*read/);
 });
 
 test('ci.yml: 先頭に permissions: contents: read', () => {
