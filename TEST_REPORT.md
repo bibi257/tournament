@@ -4,6 +4,18 @@
 
 最新の実行（2026-11-02・依存とワークフローの修正 PR1）: `npm test` 340 / 340、`npm run test:e2e` 349 / 349、`npm run test:electron` 成功、`npm run dist:win` 成功。Actions の実行は未検証（Actions 上で確認）
 
+## 2026-11-02 画面の CSP・サーバーURL・運営ログイン（PR3・PLAN D62）
+
+| 項目 | 結果 |
+| --- | --- |
+| `npm test` | 353 / 353 成功（`csp.test.js` 5 件、`share.test.js` に http の4件と `decideJoin` の3件を追加） |
+| `npm run test:e2e` | （下の最終実行で記録） |
+| `csp.spec.js` | 違反 0 件（表の作成・結果入力・CSV/PNG・呼び出し画面、共有・QR） |
+| `shareJoinGuard.spec.js` | 成功。修正前の joinAdmin では失敗することを確認（共有の版が変わる） |
+| `npm run test:electron` | 成功（CSP の下で起動・結果入力・PNG・自動保存） |
+| `_headers` | build の後も `web/_headers` が残ることを確認（build は web/app.js と web/fonts のみ作る） |
+| Pages・Cloudflare での `_headers` の応答 | **未検証（デプロイ後に確認）** |
+
 ## 2026-11-02 共有サーバーの索引・期限・連打（PR2・PLAN D61）
 
 | 項目 | 結果 |

@@ -561,3 +561,12 @@ state = {
 - 採用: (1) **`idx_comments_code_at ON comments (code, at)` を足す**（列の追加なし。既存の DB にもそのまま効く）。(2) **文書を直す**。毎日の掃除（Cron）は、無料プランの Cron の数（アカウント全体で5つまで）と、同じアカウントの他の Worker の数を確認してから判断する。今回は入れない。(3) **rev 1 以上のとき、前回の送信と同じ秒なら 429**（D1 の書き込みは増やさない。rev 0 は判定しない）。加えて README に、Cloudflare のレート制限ルールの手順を任意の対策として書く
 - 理由: (1) 索引で `EXPLAIN QUERY PLAN` が `COVERING INDEX idx_comments_code_at (code=?)` になり、件数に関係なく1件だけ読む。(2) 掃除は既に共有の作成時に行われ、期限切れは `findRoom` で「存在しない」として扱うので、利用者への影響は文書の誤りだけ。(3) クライアントは最短1.5秒間隔で送るので、通常の運用には影響しない。コードだけでは無料枠を守り切れないため、効果は限定的と明記する
 - 検証: `test/unit/worker-index.test.js`。プランに `idx_comments_code_at` が出ること（修正前は `idx_comments_code` で失敗）、500件のコメントでも期限が最大の `at` で決まること、索引が作られること、JSON 応答に `nosniff` が付くこと、同じ秒の2回目の送信が 429 になり、1秒後は通ること（修正前は失敗を確認）
+
+### D62. 画面の CSP・サーバーURLの http・運営ログインの上書き（脆弱性の確認・PR3）
+- 問題: (1) 画面に CSP が無かった（インラインの実行・外部のスクリプトを防ぐ仕組みがない）。(2) サーバーURL の検査が、http を任意のホストに許した（文言は https 前提）。パスワードとトークンが平文で流れうる。(3) 運営ログインは、共有に保存済みのデータが読めない（新しい版で保存・破損）とき、確認なしで公開し直して、共有のデータを上書きしていた
+- 選択肢: (1) CSP を meta で入れる／サーバーの応答ヘッダーだけで入れる。(2) http を全面禁止／localhost と 127.0.0.1・[::1] だけ許可。(3) 読めないとき、確認を出して上書きを選べるようにする／上書きせずに止める
+- 採用: (1) **meta で CSP を入れ**（Electron・GitHub Pages でも効く）、`web/_headers` で `frame-ancestors 'none'` などを Worker 配信の静的ファイルに付ける。`style-src-attr 'unsafe-inline'` を残す（進捗バーの動的な幅のため）。静的な `style=` は4か所をクラスに直した。(2) **http は localhost・127.0.0.1・[::1] だけ**。(3) **`decideJoin` で判断し、'blocked' のときは上書きせず、運営セッションを捨てて「アプリを更新してから、もう一度お試しください」を出す**
+- 理由: (1) インラインの実行・eval・object・base・フォームの送信先は、CSP で塞がれる。(2) 平文の http で運営の用パスワードを送らせない。手元の確認は localhost で足りる。(3) 読めないデータは、この端末では直せない。確認を出すと、誤って押されて共有が消える
+- 限界（PLAN に明記）: `connect-src` は `https:` 全体。共有サーバーの URL を利用者が入力するため、https の任意のサーバーへの送信は塞げない（インライン実行を塞いでも、データの持ち出しは防げない）。`frame-ancestors` は meta では効かないため、`_headers`（Worker 配信のみ。GitHub Pages では効かない）で付ける
+- Electron（`file://`）: 'self' は file:// でも通り、`npm run test:electron` で起動・結果入力・PNG・自動保存を確認（CSP のブロックは起きなかった）
+- 検証: 単体（`csp.test.js` 5件、`share.test.js` の `normalizeBase` と `decideJoin`）。E2E: `csp.spec.js`（securitypolicyviolation を監視し、表の作成・結果入力・CSV/PNG・呼び出し画面、共有・QR で違反 0 件）、`shareJoinGuard.spec.js`（新しい版の共有データを入れてから運営ログインしても、版と中身が変わらない。修正前の joinAdmin では失敗することを確認）
