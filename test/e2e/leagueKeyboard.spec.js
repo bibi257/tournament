@@ -85,8 +85,11 @@ test.describe('総当たり表のキーボード操作（N12）', () => {
     await page.keyboard.press('Enter');
     await enterScore(page, 2, 0);
     await expect(dlg).not.toBeVisible();
-    expect(await at(page)).toBe('2,1');
-    expect(await page.evaluate(() => document.activeElement.isConnected && document.activeElement.matches('.matrix td.cell'))).toBe(true);
+    // close イベントは非同期に発火するため、フォーカスが戻るまで待つ（CI の遅い環境で、読むのが早すぎて失敗した）
+    await expect(async () => {
+      expect(await at(page)).toBe('2,1');
+      expect(await page.evaluate(() => document.activeElement.isConnected && document.activeElement.matches('.matrix td.cell'))).toBe(true);
+    }).toPass({ timeout: 5000 });
     // そのまま矢印キーで動ける
     await page.keyboard.press('ArrowRight');
     expect(await at(page)).toBe('2,3');
