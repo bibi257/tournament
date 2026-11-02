@@ -570,3 +570,11 @@ state = {
 - 限界（PLAN に明記）: `connect-src` は `https:` 全体。共有サーバーの URL を利用者が入力するため、https の任意のサーバーへの送信は塞げない（インライン実行を塞いでも、データの持ち出しは防げない）。`frame-ancestors` は meta では効かないため、`_headers`（Worker 配信のみ。GitHub Pages では効かない）で付ける
 - Electron（`file://`）: 'self' は file:// でも通り、`npm run test:electron` で起動・結果入力・PNG・自動保存を確認（CSP のブロックは起きなかった）
 - 検証: 単体（`csp.test.js` 5件、`share.test.js` の `normalizeBase` と `decideJoin`）。E2E: `csp.spec.js`（securitypolicyviolation を監視し、表の作成・結果入力・CSV/PNG・呼び出し画面、共有・QR で違反 0 件）、`shareJoinGuard.spec.js`（新しい版の共有データを入れてから運営ログインしても、版と中身が変わらない。修正前の joinAdmin では失敗することを確認）
+
+### D63. コメントに「運営」の印を出す（脆弱性の確認・PR4、任意）
+- 問題: コメントに運営と閲覧者の区別が無かった。閲覧者が名前を「運営」にすると、告知を装える
+- 選択肢: (1) 名前の入力を禁止する語を増やす／(2) 投稿時の役割（トークンの role）を保存して、表示で印を付ける／(3) 運営だけのコメント欄を別に作る
+- 採用: **(2)**。`comments` に `role TEXT NOT NULL DEFAULT 'viewer'` を足す。SQLite には `ADD COLUMN IF NOT EXISTS` が無いので、`initDb` で `ALTER TABLE` を実行し、「duplicate column name」のエラーだけ無視する。投稿時に `auth.role` を保存し、同期の応答に `role` を返す。画面は `admin` のコメントに「運営」の印（`commentRoleBadge`。文字列は定数で、利用者の入力は `h()` を通す）
+- 理由: 名前の禁止語は回避される。役割は運営のトークンでしか得られないため、閲覧者は偽装できない。既存のコメントは `viewer` になる（それ以前は運営の投稿も区別できなかった。過去の投稿を「運営」と判定することはしない）
+- 限界: 名前の欄に「運営」と書くこと自体は残る。印（バッジ）で見分けられるようにするもので、名前の入力は禁止していない
+- 検証: `worker-index.test.js` で、運営・閲覧者の投稿の role、role 列が無い旧スキーマの DB を開いたときの移行（エラーにならず既存は viewer）、2回目の初期化のエラーが無いこと。`badge.test.js` で、admin だけに印が出て、role が無い応答でも壊れないこと（修正前は未定義で失敗）。`npm run test:e2e` 352 / 352 成功（既存のコメントの検査は変わらず通った）

@@ -4,6 +4,15 @@
 
 最新の実行（2026-11-02・依存とワークフローの修正 PR1）: `npm test` 340 / 340、`npm run test:e2e` 349 / 349、`npm run test:electron` 成功、`npm run dist:win` 成功。Actions の実行は未検証（Actions 上で確認）
 
+## 2026-11-02 コメントの「運営」の印（PR4・PLAN D63）
+
+| 項目 | 結果 |
+| --- | --- |
+| `npm test` | 356 / 356 成功（`worker-index.test.js` に role の保存・旧スキーマの移行を、`badge.test.js` に印を追加。修正前は失敗を確認） |
+| `npm run test:e2e` | 352 / 352 成功 |
+| 旧スキーマの DB | role 列が無い DB を開いても 201。既存のコメントは `viewer`。2回目の初期化でもエラーにならない |
+| 本番の D1 への ALTER | **未検証**（デプロイ後に、既存の共有を開いて確認） |
+
 ## 2026-11-02 画面の CSP・サーバーURL・運営ログイン（PR3・PLAN D62）
 
 | 項目 | 結果 |

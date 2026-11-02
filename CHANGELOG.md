@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+### 機能（コメントに「運営」の印）
+- コメントの投稿者が運営のとき、「運営」の印を出す。閲覧者が名前を「運営」にしても、印は付かない（`comments.role`。旧スキーマの DB は起動時に列を足し、既存のコメントは viewer になる。PLAN D63）
 ### 修正（画面の CSP・サーバーURL・運営ログインの上書き）
 - 画面に Content-Security-Policy を入れた（`index.html` の meta。インラインの実行・外部のスクリプトを防ぐ）。`web/_headers` で `frame-ancestors 'none'` などを Worker 配信の静的ファイルに付けた。静的な `style=` は4か所をクラスに直した（PLAN D62）
 - サーバーURL: http は localhost・127.0.0.1・[::1] だけ許可する。それ以外は https:// を求める（パスワードとトークンの平文送信を防ぐ）
