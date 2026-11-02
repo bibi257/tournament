@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### 修正（共有サーバーの索引・期限・連打）
+- 期限の計算（ポーリングごと）が、その共有のコメントを全件読んでいた。`comments (code, at)` の索引を足し、最大の `at` だけを読むようにした（既存の DB にもそのまま効く）。PLAN D61
+- README と TODO の期限の説明を実際の動きに合わせた（最後の更新から90日で入れなくなり、データは次に誰かが共有を作ったときに削除される）。Cloudflare のレート制限ルールの手順を、任意の対策として README に書いた
+- 同じ秒に続けて大会データを送ると 429（rev 1 以上）。通常の送信（1.5秒以上の間隔）には影響しない
+- JSON の応答に `X-Content-Type-Options: nosniff` を付けた
 ### 修正（依存の脆弱性と GitHub Actions の権限）
 - Electron を 44.9.0 → 44.10.1 に上げた（GHSA-jr5w-w6x2-84p9、high）。fast-uri を 3.1.9 に上げた（moderate）。ロックファイルだけを更新し、`npm audit` の high は 0 件（PLAN D60）
 - `windows.yml`: 既定の権限を `contents: read` にし、リリース添付だけを `release` ジョブ（タグ push のときだけ、`needs: build`）に分けた。exe は artifact で渡す。PR のビルドに書き込み権限を渡さない

@@ -4,6 +4,19 @@
 
 最新の実行（2026-11-02・依存とワークフローの修正 PR1）: `npm test` 340 / 340、`npm run test:e2e` 349 / 349、`npm run test:electron` 成功、`npm run dist:win` 成功。Actions の実行は未検証（Actions 上で確認）
 
+## 2026-11-02 共有サーバーの索引・期限・連打（PR2・PLAN D61）
+
+| 項目 | 結果 |
+| --- | --- |
+| `npm test` | 345 / 345 成功（`worker-index.test.js` 5 件を追加） |
+| 索引のプラン | `EXPLAIN QUERY PLAN` が `SEARCH comments USING COVERING INDEX idx_comments_code_at (code=?)`（修正前は `idx_comments_code` で失敗を確認） |
+| 500件のコメントの期限 | 最大の `at` で決まる（修正の前後で同じ値） |
+| 同じ秒の連続送信 | 2回目は 429、1秒後は 200。rev 0 の最初の送信は通る（修正前は失敗を確認） |
+| `nosniff` | JSON の応答に付く（修正前は失敗を確認） |
+| `npm run test:e2e` | 349 / 349 成功 |
+| 期限切れの定期削除（Cron） | 未実施（任意項目。Cron の数の確認を含め、判断は PLAN D61） |
+| 本番の Cloudflare での確認 | **未検証**（ローカルの Worker・D1 では確認。デプロイ後に `/api/health` と共有の作成を確認） |
+
 ## 2026-11-02 依存の脆弱性と Actions の権限（PR1・PLAN D60）
 
 | 項目 | 結果 |
