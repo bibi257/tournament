@@ -9,7 +9,7 @@ const DIR = join(import.meta.dirname, '..', '..', '.github', 'workflows');
 const read = (name) => readFileSync(join(DIR, name), 'utf8');
 
 // 改行は LF に正規化してから読む（Windows の checkout は CRLF になるため。PR1 の CI で失敗した）
-const lines = (text) => text.replace(/\r\n/g, '\n').split('\n');
+const lines = (text) => text.split(/\r?\n/);
 
 // jobs: より前の、ワークフロー直下の permissions ブロック（字下げされた行の並び）
 function topPermissions(text) {
@@ -63,10 +63,12 @@ test('windows.yml: 先頭は contents: read、書き込みは別ジョブのみ'
 });
 
 test('Windows の改行（CRLF）でも、権限とジョブを読める（CI の windows-latest で失敗した再発防止）', () => {
-  const crlf = read('windows.yml').replace(/\n/g, '\r\n');
+  // 入力は一度 LF にそろえてから CRLF にする（Windows の checkout は元から CRLF で、二重に \r が付くのを防ぐ）
+  const toCrlf = (t) => t.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+  const crlf = toCrlf(read('windows.yml'));
   assert.match(topPermissions(crlf), /contents:\s*read/);
   assert.match(jobBlock(crlf, 'release'), /contents:\s*write/);
-  assert.match(topPermissions(read('ci.yml').replace(/\n/g, '\r\n')), /contents:\s*read/);
+  assert.match(topPermissions(toCrlf(read('ci.yml'))), /contents:\s*read/);
 });
 
 test('ci.yml: 先頭に permissions: contents: read', () => {
