@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### 修正（依存の脆弱性と GitHub Actions の権限）
+- Electron を 44.9.0 → 44.10.1 に上げた（GHSA-jr5w-w6x2-84p9、high）。fast-uri を 3.1.9 に上げた（moderate）。ロックファイルだけを更新し、`npm audit` の high は 0 件（PLAN D60）
+- `windows.yml`: 既定の権限を `contents: read` にし、リリース添付だけを `release` ジョブ（タグ push のときだけ、`needs: build`）に分けた。exe は artifact で渡す。PR のビルドに書き込み権限を渡さない
+- `ci.yml` に `permissions: contents: read` を足した
+- `claude-code-review.yml` の `anthropics/claude-code-action` を、コミット SHA（v1: `9dfa65fe…`）に固定した
+- `.github/dependabot.yml` を追加（github-actions と npm、週次）
 ### 修正（共有の運営ログインの妨害対策・ワークフローの固定）
 - 運営ログインの失敗の数えが、同時に届いた要求で抜けることがあった。数えを1回の更新で行うようにした。存在しない共有コードへの試行は、IP ごとの上限で止める（PR #58 のレビュー対応）
 - 共有コードを知っている人が別々の IP から間違えるだけで、正しいパスワードの運営も10分間入れなかった。失敗を共有コード×IP で数え、5回までは待たせず、6回目から待ち時間を2倍ずつ延ばす（上限1時間）。成功で数えは消える（PLAN D59）

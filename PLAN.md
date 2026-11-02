@@ -546,3 +546,11 @@ state = {
 - 同時の要求: 失敗の数えは `UPDATE … RETURNING n` の1回の更新で行う（読んでから書くと、同時の要求で数えが抜ける。遅れを入れた再現で、20件の同時の失敗が6件としか数えられなかった）。待ちの終わりは `MAX(lock_until, …)` で、遅いほうを残す
 - 存在しない共有コード: 失敗の記録は作らず、`join` と同じ IP ごとの上限（30回/10分）で止める。記録を作り続けさせない（D1 の書き込み枠を使い切らせないため）
 - 検証: 単体テスト3件（5回まで・2倍・1時間の上限・成功で消える・IP の分離）を追加。旧方式では3件とも失敗することを確認。再現スクリプトで、6つの IP からの攻撃のあとも正しいパスワードが通ることを確認
+
+### D60. 依存の脆弱性と GitHub Actions の権限（脆弱性の確認・PR1）
+- 問題: (1) Electron 44.9.0 に high の指摘（GHSA-jr5w-w6x2-84p9、44.9.1 未満が対象）。fast-uri 3.1.8 に moderate。(2) `windows.yml` は書き込み権限（`contents: write`）を、PR のビルドを含む全ジョブに与えていた。`ci.yml` と `claude-code-review.yml` は権限の指定が無かった。(3) `claude-code-action@v1` は OAuth トークンを渡すのに、タグで参照していた
+- 選択肢: (1) `npm audit fix --force`／ロックファイルだけの更新（`npm update electron fast-uri`）。(2) リリース添付をタグ push のときだけ別ジョブにする／ワークフロー全体の権限を下げるだけ。(3) SHA に固定／そのまま
+- 採用: (1) **ロックファイルだけ更新**（electron 44.10.1、fast-uri 3.1.9。差分はこの2つだけ）。`package.json` の electron を `^44.10.1` に上げた。(2) **別ジョブ（`release`、`needs: build`、タグのときだけ）に分け、exe は artifact で渡す**。(3) SHA 固定（robin.yml と同じ方法）。Dependabot（github-actions・npm、週次）を追加
+- 理由: `--force` は electron-builder を 20.23.1 に下げる（配布のビルドが壊れる）。書き込み権限は、リリース添付をするジョブだけに必要。PR のビルドは、もし依存の中で悪意のあるコードが動いても、書き込みトークンを持たない
+- 残り: `npm audit` の high は 0 件。moderate 15 件はすべて electron-builder の依存（ビルド時のみ。配布物には入らない）。TODO.md の該当行を現状に直した
+- 検証: `npm run dist:win` 成功、`npm run test:electron` 成功（Electron 44.10.1 の起動）。`test/unit/workflows.test.js` で、権限・別ジョブ・SHA 固定・Dependabot を確かめる（修正前は4件失敗を確認）。Actions の実行は未検証（ローカルでは動かせない）
