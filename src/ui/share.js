@@ -8,7 +8,7 @@ import { getState, setState, setReadOnly, setRemoteState, reloadLocal, onSaved }
 import { toast, h } from './io.js';
 import { createState, parseState } from '../core/state.js';
 import { openQr } from './qrDialog.js';
-import { normalizeBase, defaultBase, normalizeCode, viewerLink, codeFromHash, PASSWORD_MIN } from '../core/share.js';
+import { normalizeBase, defaultBase, normalizeCode, viewerLink, codeFromHash, PASSWORD_MIN, decideJoin } from '../core/share.js';
 import { fitForShare } from '../core/edition.js';
 
 const KEY = 'bukatsu-taikai:share';
@@ -179,16 +179,19 @@ async function joinAdmin(args) {
   S.crev = r.crev;
   S.comments = r.comments || [];
   S.reports = r.reports || [];
-  if (r.state) {
-    const parsed = parseState(r.state);
-    if (parsed.ok && confirm('この共有に公開済みの大会データがあります。\n\nOK: 公開済みの内容をこの端末に読み込む\nキャンセル: この端末の内容で公開し直す')) {
-      // 共有には過去の回を全部は載せないことがあるため、この端末の過去の回のほうが多ければそれを残す
-      const mine = getState().history ?? [];
-      setState({ ...parsed.state, history: mine.length >= parsed.state.history.length ? mine : parsed.state.history });
-      toast('公開済みの大会データを読み込みました');
-    } else {
-      await pushNow();
-    }
+  const parsed = r.state ? parseState(r.state) : null;
+  const decision = decideJoin(r.state, parsed);
+  if (decision === 'blocked') {
+    // 読めないデータを上書きしない。運営セッションを捨て（disconnect と同じ後始末）、理由を出す
+    disconnect();
+    toast('共有の大会データが、このアプリでは読めません。アプリを更新してから、もう一度お試しください');
+    return;
+  }
+  if (decision === 'ask' && confirm('この共有に公開済みの大会データがあります。\n\nOK: 公開済みの内容をこの端末に読み込む\nキャンセル: この端末の内容で公開し直す')) {
+    // 共有には過去の回を全部は載せないことがあるため、この端末の過去の回のほうが多ければそれを残す
+    const mine = getState().history ?? [];
+    setState({ ...parsed.state, history: mine.length >= parsed.state.history.length ? mine : parsed.state.history });
+    toast('公開済みの大会データを読み込みました');
   } else {
     await pushNow();
   }
