@@ -46,6 +46,8 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS rooms (code TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT \'\', viewer_pw TEXT NOT NULL, viewer_ver INTEGER NOT NULL DEFAULT 1, admin_pw TEXT NOT NULL, admin_ver INTEGER NOT NULL DEFAULT 1, state TEXT, rev INTEGER NOT NULL DEFAULT 0, crev INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
   'CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, match_id TEXT, name TEXT NOT NULL, body TEXT NOT NULL, at INTEGER NOT NULL, who TEXT NOT NULL)',
   'CREATE INDEX IF NOT EXISTS idx_comments_code ON comments (code, id)',
+  // 期限の計算（keepUntil）の MAX(at) を、索引だけで読むための索引（D61）。列の追加はない
+  'CREATE INDEX IF NOT EXISTS idx_comments_code_at ON comments (code, at)',
   'CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, match_id TEXT NOT NULL, outcome TEXT NOT NULL, score1 INTEGER, score2 INTEGER, p1 TEXT, p2 TEXT, name TEXT NOT NULL, at INTEGER NOT NULL, who TEXT NOT NULL)',
   'CREATE INDEX IF NOT EXISTS idx_reports_code ON reports (code, id)',
   'CREATE TABLE IF NOT EXISTS limits (k TEXT PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL)',
@@ -72,7 +74,7 @@ const now = (env) => (env.NOW ? env.NOW() : Math.floor(Date.now() / 1000));
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...CORS },
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...CORS },
   });
 }
 
@@ -390,6 +392,11 @@ async function sync(env, request, url, code) {
 async function putState(env, request, code) {
   const auth = await authorize(env, request, code);
   requireAdmin(auth);
+  // 同じ秒に続けて送るのを止める（rev 1 以上）。通常の送信は 1.5 秒以上あけるので影響しない。
+  // rev 0（共有を作った直後の最初の送信）は判定しない（D61）
+  if (auth.room.rev >= 1 && now(env) - auth.room.updated_at < 1) {
+    throw new HttpError(429, '続けて送りすぎです。少し待ってから、もう一度お試しください');
+  }
   const body = await readJson(request, MAX_STATE_CHARS + MAX_BODY_CHARS);
   checkState(body.state);
   const text = JSON.stringify(body.state);
