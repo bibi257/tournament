@@ -25,8 +25,21 @@ export function normalizeBase(input) {
   } catch {
     return { ok: false, error: 'サーバーURLの形式が正しくありません' };
   }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return { ok: false, error: 'サーバーURLは https:// で始まるものを入力してください' };
-  return { ok: true, base: url.origin };
+  if (url.protocol === 'https:') return { ok: true, base: url.origin };
+  // http は手元の確認用（localhost・127.0.0.1・[::1]）だけ。それ以外は平文でパスワードとトークンが流れる（D62）
+  const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+  if (url.protocol === 'http:' && LOCAL_HOSTS.includes(url.hostname)) return { ok: true, base: url.origin };
+  return { ok: false, error: 'サーバーURLは https:// で始まるものを入力してください' };
+}
+
+/**
+ * 運営ログインのあと、共有の既存データをどうするか（D62）。
+ * 'push'：共有が空（この端末の内容を公開する）／'ask'：読める（読み込むか、公開し直すかを確認）／
+ * 'blocked'：読めない（新しい版で保存された・破損。上書きせず、運営セッションを捨てる）
+ */
+export function decideJoin(serverState, parsed) {
+  if (!serverState) return 'push';
+  return parsed && parsed.ok ? 'ask' : 'blocked';
 }
 
 /** 同じサーバーで配信されているページ（workers.dev・手元の確認用）なら、そのオリジンを既定にする。GitHub Pages・file:// は空 */
