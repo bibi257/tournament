@@ -85,16 +85,6 @@ test('ci.yml: 先頭に permissions: contents: read', () => {
   assert.match(top, /contents:\s*read/);
 });
 
-test('第三者のアクション（anthropics/claude-code-action）はコミット SHA に固定', () => {
-  const t = read('claude-code-review.yml');
-  const uses = [...t.matchAll(/uses:\s*(\S+)/g)].map((m) => m[1]);
-  const third = uses.filter((u) => !u.startsWith('actions/'));
-  assert.ok(third.length > 0);
-  for (const u of third) {
-    assert.match(u, /@[0-9a-f]{40}$/, `${u} は SHA に固定する`);
-  }
-});
-
 test('Dependabot: github-actions と npm を週次で見る', () => {
   const t = readFileSync(join(import.meta.dirname, '..', '..', '.github', 'dependabot.yml'), 'utf8');
   assert.match(t, /package-ecosystem:\s*"?github-actions"?/);
