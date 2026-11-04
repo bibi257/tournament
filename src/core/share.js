@@ -7,7 +7,7 @@ import { playerName } from './state.js';
 export const CODE_PATTERN = /^[a-hj-km-np-z2-9]{8}$/;
 export const COMMENT_MAX = 200;
 export const NAME_MAX = 20;
-export const PASSWORD_MIN = 6;
+export const PASSWORD_MIN = 8; // 運営用パスワードの最低文字数（画面の案内と検査。worker と同じ値）
 
 /** 入力された共有コードを正規化（空白・ハイフン除去、小文字化）。不正なら null */
 export function normalizeCode(input) {

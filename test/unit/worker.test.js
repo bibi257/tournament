@@ -54,6 +54,8 @@ test('運営用パスワードの強さを検査する。閲覧用パスワー�
   const { api } = setup();
   const post = (body) => api('POST', '/api/rooms', { body });
   assert.equal((await post({ adminPassword: 'abc' })).status, 400);
+  assert.equal((await post({ adminPassword: 'abcdefg' })).status, 400); // 7文字は不可（最低8文字）
+  assert.equal((await post({ adminPassword: 'abcdefgh' })).status, 201);
   assert.equal((await post({ adminPassword: 'x'.repeat(65) })).status, 400);
   assert.equal((await post({})).status, 400);
   assert.equal((await post({ adminPassword: ADMIN, viewerPassword: 'ignored' })).status, 201);
