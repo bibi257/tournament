@@ -26,6 +26,7 @@ const MAX_STATE_CHARS = 1_000_000;
 const MAX_BODY_CHARS = 8_000;
 const MAX_COMMENTS = 500;
 const COMMENT_LIST_LIMIT = 300;
+const MAX_PUTS_PER_10MIN = 300; // 1つの共有への大会データの送信（10分間）。通常の操作（入力が止まってから送る）より十分多く、D1 の書き込みを使い切らせない
 const MAX_REPORTS = 60; // 1つの共有で、承認待ちの報告に置ける件数
 const MAX_REPORTS_PER_MATCH = 3; // 1試合あたり
 const JOIN_MISS_MAX = 30; // 存在しない共有コードを10分間に試せる回数（IP ごと）
@@ -270,15 +271,8 @@ const clientIp = (request) => request.headers.get('CF-Connecting-IP') || 'local'
 
 // ---- ハンドラ ----
 
-async function createRoom(env, request) {
-  const body = await readJson(request, MAX_BODY_CHARS);
-  checkPassword(body.adminPassword, '運営用パスワード');
-  const ipKey = `mk:${await sha256Hex(clientIp(request))}`;
-  if (await isLimited(env, ipKey, 5)) throw new HttpError(429, '短時間に共有を作りすぎています。しばらく待ってからやり直してください');
-  await countHit(env, ipKey, 3600);
-
-  const t = now(env);
-  // 使われなくなった共有と期限切れの制限記録を掃除する
+/** 期限切れの共有と、使われなくなった記録（回数の数え・失敗の記録）を消す。共有の作成時と、毎日の Cron から呼ぶ */
+async function cleanupExpired(env, t) {
   const cutoff = t - ROOM_TTL;
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM comments WHERE code IN (SELECT code FROM rooms WHERE NOT ${ACTIVE_SQL})`).bind(cutoff, cutoff),
@@ -287,6 +281,17 @@ async function createRoom(env, request) {
     env.DB.prepare('DELETE FROM limits WHERE until < ?').bind(t),
     env.DB.prepare('DELETE FROM login_fails WHERE first_at < ? AND lock_until < ?').bind(t - LOGIN_WINDOW, t),
   ]);
+}
+
+async function createRoom(env, request) {
+  const body = await readJson(request, MAX_BODY_CHARS);
+  checkPassword(body.adminPassword, '運営用パスワード');
+  const ipKey = `mk:${await sha256Hex(clientIp(request))}`;
+  if (await isLimited(env, ipKey, 5)) throw new HttpError(429, '短時間に共有を作りすぎています。しばらく待ってからやり直してください');
+  await countHit(env, ipKey, 3600);
+
+  const t = now(env);
+  await cleanupExpired(env, t);
 
   const adminPw = await hashPassword(body.adminPassword);
   const title = clip(strip(String(body.title ?? '')).trim(), 100);
@@ -405,6 +410,10 @@ async function putState(env, request, code) {
   if (auth.room.rev >= 1 && now(env) === auth.room.updated_at) {
     throw new HttpError(429, '続けて送りすぎです。少し待ってから、もう一度お試しください');
   }
+  // 1つの共有への送信は、10分間に MAX_PUTS_PER_10MIN 回まで（共有の作成は IP ごとに制限済み。送信は運営だけにできるが、回数は決める）
+  const putKey = `pu:${code}`;
+  if (await isLimited(env, putKey, MAX_PUTS_PER_10MIN)) throw new HttpError(429, '送信が続いています。少し待ってから、もう一度お試しください');
+  await countHit(env, putKey, 600);
   const body = await readJson(request, MAX_STATE_CHARS + MAX_BODY_CHARS);
   checkState(body.state);
   const text = JSON.stringify(body.state);
@@ -534,6 +543,11 @@ async function route(env, request) {
 }
 
 export default {
+  // 毎日の Cron（wrangler.jsonc の triggers）。期限切れの共有を、次の共有の作成を待たずに消す
+  async scheduled(event, env) {
+    await initDb(env.DB);
+    await cleanupExpired(env, now(env));
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) {

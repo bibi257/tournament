@@ -583,3 +583,27 @@ test('運営ログイン: 同時に届いた失敗も、1件ずつ数える（�
   env.DB.prepare = real;
   assert.equal(env.DB._raw.prepare('SELECT n FROM login_fails').get().n, 20);
 });
+
+test('大会データの送信は、1つの共有に10分間で300回まで。時間がたつと再開できる', async () => {
+  const { api, clock } = setup();
+  const r = await newRoom(api);
+  const put = () => api('PUT', `/api/rooms/${r.code}/state`, { token: r.token, body: { state: sampleState() } });
+  for (let i = 0; i < 300; i++) {
+    clock.t += 1; // 1秒ずつ進める（同じ秒の判定には当たらず、10分の期間の中で300回送れる）
+    assert.equal((await put()).status, 200, `送信 ${i + 1}`);
+  }
+  clock.t += 1;
+  assert.equal((await put()).status, 429);
+  clock.t += 600;
+  assert.equal((await put()).status, 200);
+});
+
+test('毎日の掃除（Cron）は、期限を過ぎた共有を、次の共有の作成を待たずに消す', async () => {
+  const { api, clock, env } = setup();
+  const r = await newRoom(api);
+  clock.t += 91 * 24 * 3600;
+  assert.equal(env.DB._raw.prepare('SELECT COUNT(*) AS n FROM rooms').get().n, 1);
+  await worker.scheduled({}, env);
+  assert.equal(env.DB._raw.prepare('SELECT COUNT(*) AS n FROM rooms').get().n, 0);
+  assert.equal((await api('POST', `/api/rooms/${r.code}/join`)).status, 404);
+});
