@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+### 修正（CI のランナー）
+- `ci.yml` のランナーを `ubuntu-latest` から `ubuntu-24.04` に固定した。`ubuntu-latest` が Ubuntu 26.04 になり、Playwright 1.56.1 が「Cannot install dependencies for ubuntu26.04-x64」でブラウザを入れられず、main の CI が失敗していた（PLAN D64）
 ### 機能（コメントに「運営」の印）
 - コメントの投稿者が運営のとき、「運営」の印を出す。閲覧者が名前を「運営」にしても、印は付かない（`comments.role`。旧スキーマの DB は起動時に列を足し、既存のコメントは viewer になる。PLAN D63）
 ### 修正（画面の CSP・サーバーURL・運営ログインの上書き）
