@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+### 追加（開発の補助：PR の自動レビュー）
+- PR の作成・追加コミット後に、3つの視点（バグ・セキュリティ、読みやすさ、実用性・コスト）のサブエージェントでレビューし、まとめを PR のコメントに投稿する `pr-review` スキルと、その定義を追加した（アプリの動作には影響しない）
 ### 修正（CI のランナー）
 - `ci.yml` のランナーを `ubuntu-latest` から `ubuntu-24.04` に固定した。`ubuntu-latest` が Ubuntu 26.04 になり、Playwright 1.56.1 が「Cannot install dependencies for ubuntu26.04-x64」でブラウザを入れられず、main の CI が失敗していた（PLAN D64）
 ### 機能（コメントに「運営」の印）
