@@ -12,7 +12,7 @@ jobs:
       issues: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       # 固定した時点の v1: 9dfa65fe611cfd208b9f6a7bc42276e4f99ec922（タグ v1）
