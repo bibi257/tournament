@@ -15,7 +15,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
-      - uses: anthropics/claude-code-action@v1
+      # 固定した時点の v1: 9dfa65fe611cfd208b9f6a7bc42276e4f99ec922（タグ v1）
+      - uses: anthropics/claude-code-action@9dfa65fe611cfd208b9f6a7bc42276e4f99ec922
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: "https://github.com/anthropics/claude-code.git"

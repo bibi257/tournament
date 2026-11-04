@@ -6,6 +6,7 @@ import {
   S, isAdmin, isSharing, postComment, deleteComment, getCommentName, setCommentName,
 } from './share.js';
 import { renderReports, setupReportView } from './reportView.js';
+import { commentRoleBadge } from './badge.js';
 import { commentTargets, targetLabel, formatCommentTime, COMMENT_MAX, NAME_MAX } from '../core/share.js';
 
 const panel = () => document.getElementById('panel-comments');
@@ -47,7 +48,7 @@ function updateList() {
   document.getElementById('cl-count').textContent = `${list.length}件`;
   document.getElementById('comment-list').innerHTML = list.length
     ? list.map((c) => `<li class="comment" data-id="${h(c.id)}">
-        <div class="c-head"><b>${h(c.name)}</b>
+        <div class="c-head"><b>${h(c.name)}</b> ${commentRoleBadge(c)}
           ${c.matchId ? `<span class="c-target">${h(targetLabel(st, c.matchId))}</span>` : ''}
           <time>${h(formatCommentTime(c.at))}</time>
           ${admin ? `<button type="button" class="small danger" data-del="${h(c.id)}">削除</button>` : ''}</div>

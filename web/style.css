@@ -182,6 +182,7 @@ table.data tr.st-ready td { background: var(--primary-weak); }
 .badge-ready { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .badge-running { background: var(--ok); border-color: var(--ok); color: var(--on-primary); }
 .badge-done { border-color: var(--rule-strong); color: var(--muted); font-weight: normal; }
+.badge-admin { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-size: 11px; }
 .badge-waiting { border: 1px dashed var(--rule-strong); color: var(--muted); font-weight: normal; }
 .badge-alive { background: var(--primary-weak); border-color: var(--primary); color: var(--primary); }
 .badge-absent { margin-left: 6px; border-color: var(--rule-strong); color: var(--muted); font-weight: normal; font-size: 11px; line-height: 18px; padding: 0 6px; vertical-align: middle; } /* 欠席（名前の後ろ。灰の枠） */
@@ -827,3 +828,9 @@ table.editions td.ops { white-space: nowrap; }
   .bracket-card .bracket-wrap { display: block !important; }
   #panel-comments, .share-chip, .edition-banner, #call-screen, #qr-dialog, .qualify { display: none !important; }
 }
+
+/* 入力欄の幅（style 属性を使わないため。D62） */
+input.field-w-5 { width: 5em; }
+input.field-w-55 { width: 5.5em; }
+input.field-w-6 { width: 6em; }
+input.field-grow { flex: 1; }

@@ -46,6 +46,8 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS rooms (code TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT \'\', viewer_pw TEXT NOT NULL, viewer_ver INTEGER NOT NULL DEFAULT 1, admin_pw TEXT NOT NULL, admin_ver INTEGER NOT NULL DEFAULT 1, state TEXT, rev INTEGER NOT NULL DEFAULT 0, crev INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
   'CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, match_id TEXT, name TEXT NOT NULL, body TEXT NOT NULL, at INTEGER NOT NULL, who TEXT NOT NULL)',
   'CREATE INDEX IF NOT EXISTS idx_comments_code ON comments (code, id)',
+  // 期限の計算（keepUntil）の MAX(at) を、索引だけで読むための索引（D61）。列の追加はない
+  'CREATE INDEX IF NOT EXISTS idx_comments_code_at ON comments (code, at)',
   'CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, match_id TEXT NOT NULL, outcome TEXT NOT NULL, score1 INTEGER, score2 INTEGER, p1 TEXT, p2 TEXT, name TEXT NOT NULL, at INTEGER NOT NULL, who TEXT NOT NULL)',
   'CREATE INDEX IF NOT EXISTS idx_reports_code ON reports (code, id)',
   'CREATE TABLE IF NOT EXISTS limits (k TEXT PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL)',
@@ -72,7 +74,7 @@ const now = (env) => (env.NOW ? env.NOW() : Math.floor(Date.now() / 1000));
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...CORS },
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...CORS },
   });
 }
 
@@ -152,6 +154,13 @@ const ready = new WeakSet();
 async function initDb(db) {
   if (ready.has(db)) return;
   await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
+  // 投稿者の役割（運営・閲覧者）の列。SQLite には ADD COLUMN IF NOT EXISTS が無いので、
+  // 既にある場合の「duplicate column name」だけを無視する。既存のコメントは 'viewer' になる（D63）
+  try {
+    await db.prepare("ALTER TABLE comments ADD COLUMN role TEXT NOT NULL DEFAULT 'viewer'").run();
+  } catch (e) {
+    if (!/duplicate column name/i.test(String(e?.message ?? e))) throw e;
+  }
   ready.add(db);
 }
 
@@ -356,7 +365,7 @@ async function join(env, request, code) {
 }
 
 function commentRow(r) {
-  return { id: r.id, matchId: r.match_id, name: r.name, text: r.body, at: r.at };
+  return { id: r.id, matchId: r.match_id, name: r.name, text: r.body, at: r.at, role: r.role === 'admin' ? 'admin' : 'viewer' };
 }
 
 function reportRow(r) {
@@ -374,7 +383,7 @@ async function sync(env, request, url, code) {
     out.state = row?.state ? JSON.parse(row.state) : null;
   }
   if (crev !== room.crev) {
-    const { results } = await env.DB.prepare('SELECT id, match_id, name, body, at FROM comments WHERE code = ? ORDER BY id DESC LIMIT ?')
+    const { results } = await env.DB.prepare('SELECT id, match_id, name, body, at, role FROM comments WHERE code = ? ORDER BY id DESC LIMIT ?')
       .bind(code, COMMENT_LIST_LIMIT).all();
     out.comments = results.reverse().map(commentRow);
     // 結果の報告は運営だけに返す（閲覧者には見せない）。コメントと同じ変更番号（crev）で更新を知らせる
@@ -390,6 +399,12 @@ async function sync(env, request, url, code) {
 async function putState(env, request, code) {
   const auth = await authorize(env, request, code);
   requireAdmin(auth);
+  // 同じ秒に続けて送るのを止める（rev 1 以上）。通常の送信は 1.5 秒以上あけるので影響しない。
+  // rev 0（共有を作った直後の最初の送信）は判定しない（D61）
+  // 同じ秒（===）だけを判定する。時計が戻ると差が負になり、<1 では誤って 429 になるため（PLAN D61）
+  if (auth.room.rev >= 1 && now(env) === auth.room.updated_at) {
+    throw new HttpError(429, '続けて送りすぎです。少し待ってから、もう一度お試しください');
+  }
   const body = await readJson(request, MAX_STATE_CHARS + MAX_BODY_CHARS);
   checkState(body.state);
   const text = JSON.stringify(body.state);
@@ -416,8 +431,8 @@ async function postComment(env, request, code) {
   if (count >= MAX_COMMENTS) throw new HttpError(429, 'この共有のコメントが上限（500件）に達しました。運営に削除を依頼してください');
   await countHit(env, key, 60);
   const t = now(env);
-  const r = await env.DB.prepare('INSERT INTO comments (code, match_id, name, body, at, who) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(code, matchId, name, text, t, who).run();
+  const r = await env.DB.prepare('INSERT INTO comments (code, match_id, name, body, at, who, role) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(code, matchId, name, text, t, who, auth.role === 'admin' ? 'admin' : 'viewer').run();
   await env.DB.prepare('UPDATE rooms SET crev = crev + 1 WHERE code = ?').bind(code).run();
   return json({ ok: true, id: r.meta.last_row_id, role: auth.role }, 201);
 }

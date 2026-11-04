@@ -59,7 +59,8 @@ test.describe('試合の状態バッジ・総当たり表の記号', () => {
     await open(page);
     await importNames(page, NAMES.slice(0, 3));
     await page.click('[data-act=gen-league]');
-    await page.addStyleTag({ content: 'html { filter: grayscale(1); }' });
+    // インラインの <style> は CSP で塞がれるため、要素の style を直接設定する（CSSOM は CSP の対象外）
+    await page.evaluate(() => { document.documentElement.style.filter = 'grayscale(1)'; });
     const cell = (r, c) => page.locator('table.matrix tbody tr').nth(r).locator('td').nth(c);
     await cell(0, 1).click();
     const left = await page.locator('#rd-p1').textContent();
