@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # ubuntu-latest は 26.04 になり、Playwright 1.56.1 が入らない（PLAN D64）
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:

@@ -71,6 +71,12 @@ test('Windows の改行（CRLF）でも、権限とジョブを読める（CI �
   assert.match(topPermissions(toCrlf(read('ci.yml'))), /contents:\s*read/);
 });
 
+test('ci.yml: E2E のランナーは ubuntu-24.04 に固定する（ubuntu-latest は 26.04 になり、Playwright 1.56.1 が入らない）', () => {
+  const t = read('ci.yml');
+  assert.match(t, /runs-on:\s*ubuntu-24\.04\b/);
+  assert.doesNotMatch(t, /runs-on:\s*ubuntu-latest/);
+});
+
 test('ci.yml: 先頭に permissions: contents: read', () => {
   const top = topPermissions(read('ci.yml'));
   assert.ok(top, 'ワークフロー直下に permissions が必要');
