@@ -105,3 +105,11 @@ test('Dependabot: github-actions と npm を週次で見る', () => {
 test('全ワークフローが読める（ファイルがある）', () => {
   assert.ok(readdirSync(DIR).length >= 4);
 });
+
+// E2E（Playwright 1.56.1）を動かす CI は、対応している Ubuntu（24.04）で動かす。
+// ubuntu-latest（26.04）では Chromium の依存が入らず、テストの手前で失敗する
+test('ci.yml の test ジョブは、Playwright が対応する Ubuntu（24.04）で動く', () => {
+  const ci = lines(read('ci.yml')).join('\n');
+  assert.match(ci, /^  test:\n(    #.*\n)*    runs-on: ubuntu-24\.04(\s*#.*)?$/m);
+  assert.doesNotMatch(ci, /runs-on: ubuntu-latest/);
+});

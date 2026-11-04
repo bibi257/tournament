@@ -25,6 +25,10 @@
       }
     ]
   },
+  // 毎日 03:17（UTC）に、期限切れの共有を消す（worker の scheduled）。Cron は1つだけ使う
+  "triggers": {
+    "crons": ["17 3 * * *"]
+  },
   "assets": {
     "directory": "web",
     "binding": "ASSETS",

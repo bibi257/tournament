@@ -15,6 +15,7 @@ const KEY = 'bukatsu-taikai:share';
 const NAME_KEY = 'bukatsu-taikai:comment-name';
 const POLL_MS = 15000;
 const PUSH_DELAY_MS = 1500;
+const PUSH_RETRY_MS = 60 * 1000; // 送信の上限に達したときの、送り直しまでの時間
 
 /** 画面が読む共有の状態 */
 export const S = {
@@ -245,7 +246,14 @@ export async function pushNow() {
     setStatus('ok');
   } catch (e) {
     dirty = true;
-    handleError(e, '大会データを送信できませんでした');
+    if (e.status === 429) {
+      // 送信の上限（10分に回数まで）。拒否された変更は残しておき、少し後に自動で送り直す（PLAN D66）
+      setStatus('error', `送信が多すぎるため、約${PUSH_RETRY_MS / 60000}分後に自動で送り直します`);
+      clearTimeout(pushTimer);
+      pushTimer = setTimeout(pushNow, PUSH_RETRY_MS);
+    } else {
+      handleError(e, '大会データを送信できませんでした');
+    }
   } finally {
     pushing = false;
   }

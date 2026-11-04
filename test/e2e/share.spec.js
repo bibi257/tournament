@@ -247,7 +247,7 @@ test('共有サーバーに接続できないときは、分かる文言を出�
   await page.fill('#sh-apw', 'abc');
   await page.fill('#sh-apwc', 'abc');
   await page.click('[data-sh=start]');
-  await expect(page.locator('#sh-error')).toContainText('6文字以上');
+  await expect(page.locator('#sh-error')).toContainText('8文字以上');
 });
 
 test('共有中に次の回を始めると、閲覧者の画面も新しい回（表なし）に変わる。「次の回を始める」は閲覧者に出ない', async ({ browser }) => {
