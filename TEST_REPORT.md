@@ -1,6 +1,20 @@
 # TEST_REPORT
 
-実行日: 2026-10-19 / 環境: Linux（クラウドコンテナ）、Node.js 22.22.0、Chromium（Playwright 1.56.1）、Electron 44.9.0
+実行日: 2026-11-02 / 環境: Linux（クラウドコンテナ）、Node.js 22.22.0、Chromium（事前インストール版 145系を PW_CHROMIUM_PATH で指定。Playwright 1.56.1）、Electron 44.10.1
+
+最新の実行（2026-11-02・依存とワークフローの修正 PR1）: `npm test` 340 / 340、`npm run test:e2e` 349 / 349、`npm run test:electron` 成功、`npm run dist:win` 成功。Actions の実行は未検証（Actions 上で確認）
+
+## 2026-11-02 依存の脆弱性と Actions の権限（PR1・PLAN D60）
+
+| 項目 | 結果 |
+| --- | --- |
+| `npm audit` | high 0 件（修正前は electron 44.9.0 に high 1 件）。moderate 15 件はすべて electron-builder の依存（ビルド時のみ） |
+| `npm update electron fast-uri` | electron 44.9.0 → 44.10.1、fast-uri 3.1.8 → 3.1.9。ロックファイルの差分はこの2つだけ |
+| `npm test` | 340 / 340 成功（`workflows.test.js` 5 件を追加。修正前は4件が失敗することを確認） |
+| `npm run test:e2e` | 349 / 349 成功（初回は Playwright が要求する Chromium 1194 が無く 335 件失敗。環境の問題で、`PW_CHROMIUM_PATH` で既存の Chromium を指定して再実行） |
+| `npm run test:electron` | 成功（Electron 44.10.1 で起動・結果入力・呼び出し画面・PNG・自動保存） |
+| `npm run dist:win` | 成功（`dist/bukatsu-taikai-1.0.0-portable.exe`） |
+| Actions の `windows.yml`・`ci.yml` | **未検証（Actions 上で確認）**。ローカルでは GitHub Actions を動かせない。権限の分割とタグ時の release ジョブは、PR の CI と次のタグ push で確認する |
 
 ## 結果まとめ
 
