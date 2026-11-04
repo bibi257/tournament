@@ -36,7 +36,7 @@ const LOGIN_MAX_WAIT = 60 * 60; // 待ち時間の上限（秒）
 const LOGIN_WINDOW = 24 * 60 * 60; // 最初の失敗からこの時間たつと、失敗の数を数え直す
 const NAME_MAX = 20;
 const COMMENT_MAX = 200;
-const PASSWORD_MIN = 8; // 運営用パスワードの最低文字数（共有の作成・変更のときに検査）。既存の共有のパスワードは変わらない
+const PASSWORD_MIN = 8; // 運営用パスワードの最低文字数（共有の作成・変更のときに検査）。既存の共有のパスワードは変わらない。画面（src/core/share.js の PASSWORD_MIN）と同じ値にそろえること
 const PASSWORD_MAX = 64;
 const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 const CODE_PATTERN = /^[a-hj-km-np-z2-9]{8}$/;
@@ -161,6 +161,17 @@ async function initDb(db) {
     await db.prepare("ALTER TABLE comments ADD COLUMN role TEXT NOT NULL DEFAULT 'viewer'").run();
   } catch (e) {
     if (!/duplicate column name/i.test(String(e?.message ?? e))) throw e;
+  }
+  // 送信の数え（10分間の回数と、その窓の終わり）を、共有の行に持つ。送信の1回の更新で、判定と加算を同時に行う（PLAN D66）
+  for (const sql of [
+    'ALTER TABLE rooms ADD COLUMN put_n INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE rooms ADD COLUMN put_until INTEGER NOT NULL DEFAULT 0',
+  ]) {
+    try {
+      await db.prepare(sql).run();
+    } catch (e) {
+      if (!/duplicate column name/i.test(String(e?.message ?? e))) throw e;
+    }
   }
   ready.add(db);
 }
@@ -410,19 +421,27 @@ async function putState(env, request, code) {
   if (auth.room.rev >= 1 && now(env) === auth.room.updated_at) {
     throw new HttpError(429, '続けて送りすぎです。少し待ってから、もう一度お試しください');
   }
-  // 1つの共有への送信は、10分間に MAX_PUTS_PER_10MIN 回まで（共有の作成は IP ごとに制限済み。送信は運営だけにできるが、回数は決める）
-  const putKey = `pu:${code}`;
-  if (await isLimited(env, putKey, MAX_PUTS_PER_10MIN)) throw new HttpError(429, '送信が続いています。少し待ってから、もう一度お試しください');
-  await countHit(env, putKey, 600);
   const body = await readJson(request, MAX_STATE_CHARS + MAX_BODY_CHARS);
   checkState(body.state);
   const text = JSON.stringify(body.state);
   if (text.length > MAX_STATE_CHARS) throw new HttpError(413, '大会データが大きすぎます');
   const title = clip(strip(String(body.state.meta?.title ?? '')).trim(), 100);
   // 版番号は DB 側で +1 する。読んだ値に +1 して書くと、2台から同時に送ったときに同じ番号になり、閲覧者が後の更新を受け取れない
-  const rev = await env.DB.prepare('UPDATE rooms SET state = ?, title = ?, rev = rev + 1, updated_at = ? WHERE code = ? RETURNING rev')
-    .bind(text, title, now(env), code).first('rev');
-  if (rev === null) throw new HttpError(404, 'この共有は終了したか、存在しません');
+  // 1共有への送信は、10分の窓の中で MAX_PUTS_PER_10MIN 回まで。判定と加算は、この1回の更新の中で行う（同時の要求でも数えが抜けず、拒否された送信は書き込まれない）
+  const t = now(env);
+  const rev = await env.DB.prepare(`UPDATE rooms
+      SET state = ?, title = ?, rev = rev + 1, updated_at = ?,
+          put_n = CASE WHEN put_until <= ? THEN 1 ELSE put_n + 1 END,
+          put_until = CASE WHEN put_until <= ? THEN ? ELSE put_until END
+      WHERE code = ? AND (put_until <= ? OR put_n < ?)
+      RETURNING rev`)
+    .bind(text, title, t, t, t, t + 600, code, t, MAX_PUTS_PER_10MIN).first('rev');
+  if (rev === null) {
+    // 行が無ければ「終わった共有」、あれば送信の上限
+    const exists = await env.DB.prepare('SELECT 1 AS x FROM rooms WHERE code = ?').bind(code).first();
+    if (!exists) throw new HttpError(404, 'この共有は終了したか、存在しません');
+    throw new HttpError(429, '送信が続いています。少し待ってから、もう一度お試しください');
+  }
   return json({ ok: true, rev, keepUntil: now(env) + ROOM_TTL });
 }
 

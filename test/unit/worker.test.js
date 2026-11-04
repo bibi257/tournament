@@ -369,7 +369,7 @@ test('同時に2回公開しても版番号は重ならない（閲覧者が後�
   const gate = async () => { if (++waiting === 2) release(); await bothReady; };
   env.DB.prepare = (sql) => {
     const st = prepare(sql);
-    if (!sql.startsWith('UPDATE rooms SET state')) return st;
+    if (!/^UPDATE rooms\s+SET state/.test(sql)) return st; // 改行や字下げが入っても一致させる
     return { bind: (...p) => {
       const b = st.bind(...p);
       return { run: async () => { await gate(); return b.run(); }, first: async (c) => { await gate(); return b.first(c); } };
@@ -608,4 +608,30 @@ test('毎日の掃除（Cron）は、期限を過ぎた共有を、次の共有�
   await worker.scheduled({}, env);
   assert.equal(env.DB._raw.prepare('SELECT COUNT(*) AS n FROM rooms').get().n, 0);
   assert.equal((await api('POST', `/api/rooms/${r.code}/join`)).status, 404);
+});
+
+test('大会データの送信の上限は、同時に届いた要求でも超えない（判定と加算は1回の更新）', async () => {
+  const { api, env, clock } = setup();
+  const r = await newRoom(api);
+  for (let i = 0; i < 299; i++) {
+    clock.t += 1;
+    assert.equal((await api('PUT', `/api/rooms/${r.code}/state`, { token: r.token, body: { state: sampleState() } })).status, 200);
+  }
+  // 残りは1回分。20件を同時に送ると、通るのは1件だけ（他は 429）
+  clock.t += 1;
+  const prepare = env.DB.prepare;
+  const wrap = (st) => ({
+    bind: (...p) => wrap(st.bind(...p)),
+    first: async (c) => { await new Promise((res) => setTimeout(res, 2)); return st.first(c); },
+    run: async () => { await new Promise((res) => setTimeout(res, 2)); return st.run(); },
+    all: async () => { await new Promise((res) => setTimeout(res, 2)); return st.all(); },
+  });
+  env.DB.prepare = (sql) => wrap(prepare(sql));
+  const results = await Promise.all(Array.from({ length: 20 }, () =>
+    api('PUT', `/api/rooms/${r.code}/state`, { token: r.token, body: { state: sampleState() } })));
+  env.DB.prepare = prepare;
+  const accepted = results.filter((x) => x.status === 200).length;
+  assert.equal(accepted, 1);
+  assert.equal(results.filter((x) => x.status === 429).length, 19);
+  assert.equal(env.DB._raw.prepare('SELECT put_n FROM rooms').get().put_n, 300);
 });

@@ -1,9 +1,9 @@
 
 name: Robin AI Review
 
+# 自動実行は止めている（利用者の指示）。必要なときは Actions の画面から手動で実行する
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 permissions:
   actions: read
