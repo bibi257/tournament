@@ -40,7 +40,7 @@
     "@fontsource/ibm-plex-sans-jp": "^5.3.1",
     "@playwright/test": "^1.56.1",
     "electron": "^44.10.1",
-    "electron-builder": "^26.15.3",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2"
   },
   "author": "部内大会運営"
