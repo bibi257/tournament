@@ -578,3 +578,10 @@ state = {
 - 理由: 名前の禁止語は回避される。役割は運営のトークンでしか得られないため、閲覧者は偽装できない。既存のコメントは `viewer` になる（それ以前は運営の投稿も区別できなかった。過去の投稿を「運営」と判定することはしない）
 - 限界: 名前の欄に「運営」と書くこと自体は残る。印（バッジ）で見分けられるようにするもので、名前の入力は禁止していない
 - 検証: `worker-index.test.js` で、運営・閲覧者の投稿の role、role 列が無い旧スキーマの DB を開いたときの移行（エラーにならず既存は viewer）、2回目の初期化のエラーが無いこと。`badge.test.js` で、admin だけに印が出て、role が無い応答でも壊れないこと（修正前は未定義で失敗）。`npm run test:e2e` 352 / 352 成功（既存のコメントの検査は変わらず通った）
+
+### D64. CI のランナーを ubuntu-24.04 に固定する
+- 問題: `ubuntu-latest` が Ubuntu 26.04 に切り替わり、Playwright 1.56.1 の `npx playwright install --with-deps chromium` が「Playwright does not support chromium on ubuntu26.04-x64」で失敗した。main への push の CI と、Dependabot の PR がすべて赤になった（単体テストは成功）
+- 選択肢: A. `ci.yml` を `ubuntu-24.04` に固定する／B. Playwright を新しい版に上げる（Dependabot #71 が 1.64.1 を提案。26.04 への対応は未確認）／C. ランナーの OS に依存しない（Playwright の公式 Docker イメージなど）
+- 採用: **A**。ブラウザを入れる `ci.yml` の1か所だけ。ほかのワークフロー（pages・windows の release・review）はブラウザを入れないため、`ubuntu-latest` のまま
+- 理由: 1行で、アプリの動きにも他の依存にも影響しない。B は Playwright の更新（E2E の挙動が変わりうる）と同時に確かめるべきで、別の機会にする。Playwright を上げて 26.04 に対応したら、固定を外してよい
+- 検証: `test/unit/workflows.test.js` で `ci.yml` が `ubuntu-24.04` で、`ubuntu-latest` でないことを確かめる（固定前は失敗を確認）。実際の CI（Actions 上）は **未検証**（この PR の CI で確認）

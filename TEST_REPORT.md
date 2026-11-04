@@ -38,6 +38,15 @@
 | 期限切れの定期削除（Cron） | 未実施（任意項目。Cron の数の確認を含め、判断は PLAN D61） |
 | 本番の Cloudflare での確認 | **未検証**（ローカルの Worker・D1 では確認。デプロイ後に `/api/health` と共有の作成を確認） |
 
+## 2026-11-04 CI のランナーの固定（PLAN D64）
+
+| 項目 | 結果 |
+| --- | --- |
+| 原因 | main の CI（run 41760038561）が `playwright install` で失敗: `Cannot install dependencies for ubuntu26.04-x64 with Playwright 1.56.1`。同じ run の単体テストは 359 / 359 成功 |
+| `npm test` | 360 / 360 成功（`workflows.test.js` に1件を追加。固定前は失敗を確認） |
+| `npm run build` | 成功 |
+| Actions 上の `ci.yml`（ubuntu-24.04） | **未検証（この PR の CI で確認）** |
+
 ## 2026-11-02 PR の CI・確認の指摘への対応（PR1〜PR4 の head で再確認）
 
 - CI の `build`（windows-latest・`npm test`）の失敗の原因: Windows の checkout で `.yml` が CRLF になり、ワークフローの確認が LF 前提の正規表現で失敗していた。確認を LF に正規化し、CRLF の入力で失敗する再発防止テストを追加（旧 helper では失敗することを確認）
