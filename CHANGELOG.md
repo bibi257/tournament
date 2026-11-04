@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+### 機能（コメントに「運営」の印）
+- コメントの投稿者が運営のとき、「運営」の印を出す。閲覧者が名前を「運営」にしても、印は付かない（`comments.role`。旧スキーマの DB は起動時に列を足し、既存のコメントは viewer になる。PLAN D63）
+### 修正（画面の CSP・サーバーURL・運営ログインの上書き）
+- 画面に Content-Security-Policy を入れた（`index.html` の meta。インラインの実行・外部のスクリプトを防ぐ）。`web/_headers` で `frame-ancestors 'none'` などを Worker 配信の静的ファイルに付けた。静的な `style=` は4か所をクラスに直した（PLAN D62）
+- サーバーURL: http は localhost・127.0.0.1・[::1] だけ許可する。それ以外は https:// を求める（パスワードとトークンの平文送信を防ぐ）
+- 運営ログイン: 共有に読めない大会データ（新しい版で保存・破損）があるとき、上書きせず運営セッションを捨て、「アプリを更新してから、もう一度お試しください」を表示する（`decideJoin`）
+### 修正（PR の確認の指摘）
+- 同じ秒の送信の判定を `===` にし、時計が戻ったときに誤って 429 にならないようにした（PLAN D61）
+- ワークフローの確認（`workflows.test.js`）を LF に正規化し、Windows の CI（CRLF）で失敗しないようにした
+### 修正（共有サーバーの索引・期限・連打）
+- 期限の計算（ポーリングごと）が、その共有のコメントを全件読んでいた。`comments (code, at)` の索引を足し、最大の `at` だけを読むようにした（既存の DB にもそのまま効く）。PLAN D61
+- README と TODO の期限の説明を実際の動きに合わせた（最後の更新から90日で入れなくなり、データは次に誰かが共有を作ったときに削除される）。Cloudflare のレート制限ルールの手順を、任意の対策として README に書いた
+- 同じ秒に続けて大会データを送ると 429（rev 1 以上）。通常の送信（1.5秒以上の間隔）には影響しない
+- JSON の応答に `X-Content-Type-Options: nosniff` を付けた
 ### 修正（依存の脆弱性と GitHub Actions の権限）
 - Electron を 44.9.0 → 44.10.1 に上げた（GHSA-jr5w-w6x2-84p9、high）。fast-uri を 3.1.9 に上げた（moderate）。ロックファイルだけを更新し、`npm audit` の high は 0 件（PLAN D60）
 - `windows.yml`: 既定の権限を `contents: read` にし、リリース添付だけを `release` ジョブ（タグ push のときだけ、`needs: build`）に分けた。exe は artifact で渡す。PR のビルドに書き込み権限を渡さない

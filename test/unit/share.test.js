@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  normalizeCode, normalizeBase, defaultBase, viewerLink, codeFromHash, commentTargets, targetLabel, formatCommentTime,
+  normalizeCode, normalizeBase, decideJoin, defaultBase, viewerLink, codeFromHash, commentTargets, targetLabel, formatCommentTime,
 } from '../../src/core/share.js';
 import { createState } from '../../src/core/state.js';
 import { generateTournament } from '../../src/core/bracket.js';
@@ -30,6 +30,14 @@ test('サーバーURL: origin だけにする。スキーム省略は https、�
   assert.deepEqual(normalizeBase('https://tournament.abc.workers.dev/'), { ok: true, base: 'https://tournament.abc.workers.dev' });
   assert.deepEqual(normalizeBase('tournament.abc.workers.dev/path?x=1#y'), { ok: true, base: 'https://tournament.abc.workers.dev' });
   assert.deepEqual(normalizeBase('http://localhost:4174'), { ok: true, base: 'http://localhost:4174' });
+  // http は手元の確認用（localhost・127.0.0.1・[::1]）だけ。それ以外は平文でパスワードとトークンが流れるため拒否（D62）
+  assert.deepEqual(normalizeBase('http://127.0.0.1:4174'), { ok: true, base: 'http://127.0.0.1:4174' });
+  assert.deepEqual(normalizeBase('http://[::1]:4174'), { ok: true, base: 'http://[::1]:4174' });
+  for (const bad of ['http://evil.example.com', 'http://localhost.evil.com', 'http://localhost@evil.com', 'http://192.168.0.5']) {
+    const r = normalizeBase(bad);
+    assert.equal(r.ok, false, bad);
+    assert.match(r.error, /https:\/\/ で始まる/, bad);
+  }
   assert.equal(normalizeBase('javascript:alert(1)').ok, false);
   assert.equal(normalizeBase('ftp://example.com').ok, false);
   assert.equal(normalizeBase('http://').ok, false);
@@ -79,4 +87,19 @@ test('コメント対象: 参加者の改名が反映され、表にない試合
 test('コメント時刻は 月/日 時:分', () => {
   const sec = new Date(2026, 9, 17, 9, 5).getTime() / 1000;
   assert.equal(formatCommentTime(sec), '10/17 09:05');
+});
+
+// 運営ログインのとき、共有の既存データをどう扱うか（D62）
+test('decideJoin: 共有が空なら push（この端末の内容を公開する）', () => {
+  assert.equal(decideJoin(null, null), 'push');
+  assert.equal(decideJoin('', null), 'push');
+});
+
+test('decideJoin: 共有のデータを読めるなら ask（読み込むか、公開し直すかを確認する）', () => {
+  assert.equal(decideJoin('{"version":1}', { ok: true, state: {} }), 'ask');
+});
+
+test('decideJoin: 共有のデータが読めないなら blocked（上書きしない）', () => {
+  assert.equal(decideJoin('{"version":99}', { ok: false, error: '新しい版' }), 'blocked');
+  assert.equal(decideJoin('{"broken', { ok: false }), 'blocked');
 });

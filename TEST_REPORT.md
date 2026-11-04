@@ -4,6 +4,48 @@
 
 最新の実行（2026-11-02・依存とワークフローの修正 PR1）: `npm test` 340 / 340、`npm run test:e2e` 349 / 349、`npm run test:electron` 成功、`npm run dist:win` 成功。Actions の実行は未検証（Actions 上で確認）
 
+## 2026-11-02 コメントの「運営」の印（PR4・PLAN D63）
+
+| 項目 | 結果 |
+| --- | --- |
+| `npm test` | 356 / 356 成功（`worker-index.test.js` に role の保存・旧スキーマの移行を、`badge.test.js` に印を追加。修正前は失敗を確認） |
+| `npm run test:e2e` | 352 / 352 成功 |
+| 旧スキーマの DB | role 列が無い DB を開いても 201。既存のコメントは `viewer`。2回目の初期化でもエラーにならない |
+| 本番の D1 への ALTER | **未検証**（デプロイ後に、既存の共有を開いて確認） |
+
+## 2026-11-02 画面の CSP・サーバーURL・運営ログイン（PR3・PLAN D62）
+
+| 項目 | 結果 |
+| --- | --- |
+| `npm test` | 353 / 353 成功（`csp.test.js` 5 件、`share.test.js` に http の4件と `decideJoin` の3件を追加） |
+| `npm run test:e2e` | 352 / 352 成功（PR3 で見つけた1件: `status.spec.js` のグレースケールの確認が、インラインの `<style>` を CSP で塞がれた。テストの側を CSSOM に直した） |
+| `csp.spec.js` | 違反 0 件（表の作成・結果入力・CSV/PNG・呼び出し画面、共有・QR） |
+| `shareJoinGuard.spec.js` | 成功。修正前の joinAdmin では失敗することを確認（共有の版が変わる） |
+| `npm run test:electron` | 成功（CSP の下で起動・結果入力・PNG・自動保存） |
+| `_headers` | build の後も `web/_headers` が残ることを確認（build は web/app.js と web/fonts のみ作る） |
+| Pages・Cloudflare での `_headers` の応答 | **未検証（デプロイ後に確認）** |
+
+## 2026-11-02 共有サーバーの索引・期限・連打（PR2・PLAN D61）
+
+| 項目 | 結果 |
+| --- | --- |
+| `npm test` | 345 / 345 成功（`worker-index.test.js` 5 件を追加） |
+| 索引のプラン | `EXPLAIN QUERY PLAN` が `SEARCH comments USING COVERING INDEX idx_comments_code_at (code=?)`（修正前は `idx_comments_code` で失敗を確認） |
+| 500件のコメントの期限 | 最大の `at` で決まる（修正の前後で同じ値） |
+| 同じ秒の連続送信 | 2回目は 429、1秒後は 200。rev 0 の最初の送信は通る（修正前は失敗を確認） |
+| `nosniff` | JSON の応答に付く（修正前は失敗を確認） |
+| `npm run test:e2e` | 349 / 349 成功 |
+| 期限切れの定期削除（Cron） | 未実施（任意項目。Cron の数の確認を含め、判断は PLAN D61） |
+| 本番の Cloudflare での確認 | **未検証**（ローカルの Worker・D1 では確認。デプロイ後に `/api/health` と共有の作成を確認） |
+
+## 2026-11-02 PR の CI・確認の指摘への対応（PR1〜PR4 の head で再確認）
+
+- CI の `build`（windows-latest・`npm test`）の失敗の原因: Windows の checkout で `.yml` が CRLF になり、ワークフローの確認が LF 前提の正規表現で失敗していた。確認を LF に正規化し、CRLF の入力で失敗する再発防止テストを追加（旧 helper では失敗することを確認）
+- 同じ秒の判定を `===` に（時計の逆行で誤って 429 にならない。テストを追加し、修正前は失敗を確認）
+- CSP の `connect-src` に `http://[::1]:*` を追加（csp.test.js で確認）
+- 最終（PR4 の head・`feat/comment-admin-badge`）: `npm test` 359 / 359、`npm run test:e2e` 352 / 352、`npm run test:electron` 成功
+- 未検証: GitHub Actions の CI（Windows・Linux）の再実行結果は、push 後に確認
+
 ## 2026-11-02 依存の脆弱性と Actions の権限（PR1・PLAN D60）
 
 | 項目 | 結果 |

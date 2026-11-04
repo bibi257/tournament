@@ -75,7 +75,7 @@ export function qualifyHtml(st) {
   const max = st.league.playerIds.filter((id) => alive.has(id)).length;
   if (max < 2) return '';
   return `<div class="qualify owner-only">
-    <label>上位 <input type="number" id="qualify-count" min="2" max="${max}" value="${Math.min(4, max)}" style="width:5em"> 人</label>
+    <label>上位 <input type="number" id="qualify-count" class="field-w-5" min="2" max="${max}" value="${Math.min(4, max)}"> 人</label>
     <button type="button" data-edition="qualify">この人たちで第${n + 1}回大会を始める</button>
     <p class="hint">予選リーグのあとに決勝トーナメントを行うときなどに使います。上位の選手だけを、順位順の名簿にして次の大会を始めます（今の大会の記録は「過去の大会」に残ります）。</p>
   </div>`;

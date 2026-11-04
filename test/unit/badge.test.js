@@ -53,3 +53,13 @@ test('欠席のバッジ: 名前の末尾の「（欠席）」だけをバッジ
   assert.equal(nameHtml(3), '3');
   assert.equal(nameHtml(undefined), '');
 });
+
+// コメントの「運営」の印（PR4・D63）
+import { commentRoleBadge } from '../../src/ui/badge.js';
+test('コメントの運営の印: admin だけに出る。role が無い応答でも壊れない', () => {
+  assert.match(commentRoleBadge({ role: 'admin' }), /<span class="badge badge-admin">運営<\/span>/);
+  assert.equal(commentRoleBadge({ role: 'viewer' }), '');
+  assert.equal(commentRoleBadge({}), '');
+  assert.equal(commentRoleBadge(null), '');
+  assert.doesNotMatch(commentRoleBadge({ role: 'admin' }), /style=/);
+});
