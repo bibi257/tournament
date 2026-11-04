@@ -11,9 +11,7 @@ permissions:
 
 jobs:
   test:
-    # ubuntu-latest が 26.04 になり、Playwright 1.56.1 は Chromium の依存を入れられなくなった（E2E の手前で失敗）。
-    # Playwright を上げるまで、対応している 24.04 に固定する
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04 # ubuntu-latest は 26.04 になり、Playwright 1.56.1 が入らない（PLAN D64）
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:

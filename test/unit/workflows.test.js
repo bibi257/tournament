@@ -71,6 +71,14 @@ test('Windows の改行（CRLF）でも、権限とジョブを読める（CI �
   assert.match(topPermissions(toCrlf(read('ci.yml'))), /contents:\s*read/);
 });
 
+test('ci.yml: E2E のランナーは ubuntu-24.04 に固定する（ubuntu-latest は 26.04 になり、Playwright 1.56.1 が入らない）', () => {
+  // ブラウザを入れる test ジョブだけを見る（ブラウザの要らない別のジョブが ubuntu-latest を使うのは構わない）
+  const job = jobBlock(read('ci.yml'), 'test');
+  assert.ok(job, 'test ジョブがある');
+  assert.match(job, /runs-on:\s*ubuntu-24\.04\b/);
+  assert.doesNotMatch(job, /runs-on:\s*ubuntu-latest/);
+});
+
 test('ci.yml: 先頭に permissions: contents: read', () => {
   const top = topPermissions(read('ci.yml'));
   assert.ok(top, 'ワークフロー直下に permissions が必要');
@@ -102,6 +110,6 @@ test('全ワークフローが読める（ファイルがある）', () => {
 // ubuntu-latest（26.04）では Chromium の依存が入らず、テストの手前で失敗する
 test('ci.yml の test ジョブは、Playwright が対応する Ubuntu（24.04）で動く', () => {
   const ci = lines(read('ci.yml')).join('\n');
-  assert.match(ci, /^  test:\n    (#.*\n    )*runs-on: ubuntu-24\.04$/m);
+  assert.match(ci, /^  test:\n(    #.*\n)*    runs-on: ubuntu-24\.04(\s*#.*)?$/m);
   assert.doesNotMatch(ci, /runs-on: ubuntu-latest/);
 });
