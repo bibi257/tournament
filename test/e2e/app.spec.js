@@ -277,7 +277,8 @@ test.describe('出力', () => {
     const res = await download(page, '[data-export=results-csv]');
     expect(res.name).toBe('春季部内大会_トーナメント_試合結果.csv');
     expect(res.bytes.toString('utf8')).toContain('試合番号,回戦,卓,時間帯,選手1,スコア,選手2,勝者,状態');
-    expect(res.bytes.toString('utf8')).toContain('3-1');
+    // スコアは、Excel が日付（3月1日）に変えないよう ="3-1" の形で出る
+    expect(res.bytes.toString('utf8')).toContain(',"=""3-1""",');
 
     for (const sel of ['[data-export=bracket-png]', '[data-export=results-png]']) {
       const png = await download(page, sel);
