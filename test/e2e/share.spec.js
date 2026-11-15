@@ -176,6 +176,9 @@ test('運営用パスワードを変えても閲覧は続く。共有を終了�
   await expect(a.locator('#sh-error')).toContainText('違います');
   await a.fill('#sh-apw2', 'new-admin-pass');
   await a.click('[data-sh=admin]');
+  // 公開済みのデータがあるので、どちらの内容で続けるかを選ぶ（最初の選択肢は「公開済みの内容を読み込む」）
+  await expect(a.locator('#choice-dialog')).toBeVisible();
+  await a.click('#ch-ok');
   await expect(a.locator('.sh-code')).toHaveText(code);
 
   // 共有を終了

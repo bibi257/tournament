@@ -8,6 +8,7 @@ import { getState, setState, setReadOnly, setRemoteState, reloadLocal, onSaved }
 import { toast, h } from './io.js';
 import { createState, parseState } from '../core/state.js';
 import { openQr } from './qrDialog.js';
+import { askChoice } from './choiceDialog.js';
 import { normalizeBase, defaultBase, normalizeCode, viewerLink, codeFromHash, PASSWORD_MIN, decideJoin } from '../core/share.js';
 import { fitForShare } from '../core/edition.js';
 
@@ -174,21 +175,36 @@ async function joinViewer({ base, code }) {
 
 async function joinAdmin(args) {
   const data = await loginAdmin(args);
+  // 先に公開済みの内容を確かめる。運営セッションは、どうするかが決まってから始める
+  // （決まる前に画面を閉じても、この端末に運営セッションが残らず、公開済みのデータに触れない）
+  const r = await request(args.base, 'GET', `/api/rooms/${data.code}/sync?rev=-1&crev=-1`, { token: data.token });
+  const parsed = r.state ? parseState(r.state) : null;
+  const decision = decideJoin(r.state, parsed);
+  if (decision === 'blocked') {
+    // 読めないデータを上書きしない。運営セッションを始めずに、理由を出す
+    toast('共有の大会データが、このアプリでは読めません。アプリを更新してから、もう一度お試しください');
+    return;
+  }
+  // どちらの内容で続けるかは、選んでもらう。キャンセル・Esc では、どちらも変えずに運営ログインを取りやめる
+  // （confirm の「キャンセル＝この端末の内容で公開し直す」だと、閉じただけで公開済みのデータが置き換わるため）
+  const choice = decision === 'ask' ? await askChoice({
+    title: 'この共有には、公開済みの大会データがあります',
+    body: 'どちらの内容で続けるかを選んでください。キャンセルすると、どちらも変えずに運営ログインを取りやめます。',
+    options: [
+      { value: 'load', label: '公開済みの内容を、この端末に読み込む', hint: 'この端末の今の大会データは、公開済みの内容に置き換わります' },
+      { value: 'push', label: 'この端末の内容で公開し直す', hint: '公開済みの大会データは、この端末の内容に置き換わります' },
+    ],
+  }) : 'push';
+  if (choice === null) {
+    toast('運営ログインを取りやめました。公開済みの大会データは変えていません');
+    return;
+  }
   useSession(args.base, data, 'admin');
-  const r = await call('GET', '/sync?rev=-1&crev=-1');
   S.rev = r.rev;
   S.crev = r.crev;
   S.comments = r.comments || [];
   S.reports = r.reports || [];
-  const parsed = r.state ? parseState(r.state) : null;
-  const decision = decideJoin(r.state, parsed);
-  if (decision === 'blocked') {
-    // 読めないデータを上書きしない。運営セッションを捨て（disconnect と同じ後始末）、理由を出す
-    disconnect();
-    toast('共有の大会データが、このアプリでは読めません。アプリを更新してから、もう一度お試しください');
-    return;
-  }
-  if (decision === 'ask' && confirm('この共有に公開済みの大会データがあります。\n\nOK: 公開済みの内容をこの端末に読み込む\nキャンセル: この端末の内容で公開し直す')) {
+  if (choice === 'load') {
     // 共有には過去の回を全部は載せないことがあるため、この端末の過去の回のほうが多ければそれを残す
     const mine = getState().history ?? [];
     setState({ ...parsed.state, history: mine.length >= parsed.state.history.length ? mine : parsed.state.history });
