@@ -17,6 +17,8 @@ const NAME_KEY = 'bukatsu-taikai:comment-name';
 const POLL_MS = 15000;
 const PUSH_DELAY_MS = 1500;
 const PUSH_RETRY_MS = 60 * 1000; // 送信の上限に達したときの、送り直しまでの時間
+const REQUEST_TIMEOUT_MS = 20 * 1000; // 1回の通信で、応答を待つ時間の上限
+const TIMEOUT_MESSAGE = '共有サーバーから応答がありません。通信状況を確認してください';
 
 /** 画面が読む共有の状態 */
 export const S = {
@@ -84,17 +86,25 @@ class ShareError extends Error {
 }
 
 async function request(base, method, path, { token, body } = {}) {
+  // 応答を待つ時間に上限を置く。応答が返らないまま待ち続けると、送信中の印が消えず、以後の送信と更新がすべて止まるため
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS);
   let res;
+  let data;
   try {
     res = await fetch(base + path, {
       method,
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: ctl.signal,
     });
+    data = await res.json().catch(() => null);
   } catch {
-    throw new ShareError(0, '共有サーバーに接続できませんでした。通信状況とサーバーURLを確認してください');
+    throw new ShareError(0, ctl.signal.aborted ? TIMEOUT_MESSAGE : '共有サーバーに接続できませんでした。通信状況とサーバーURLを確認してください');
+  } finally {
+    clearTimeout(timer);
   }
-  const data = await res.json().catch(() => null);
+  if (ctl.signal.aborted) throw new ShareError(0, TIMEOUT_MESSAGE); // 本文を読んでいる途中で時間切れ
   if (!res.ok || !data?.ok) throw new ShareError(res.status, data?.error || `サーバーの応答が正しくありません（${res.status}）`);
   return data;
 }
