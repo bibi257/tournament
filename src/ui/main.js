@@ -1,6 +1,6 @@
 // エントリポイント: タブ切替・ヘッダー操作・保存/読込
 
-import { getState, setState, onChange, onSaveStatus, initState, isReadOnly, undo, canUndo, undoLabel, onUndoChange } from './store.js';
+import { getState, setState, onChange, onSaveStatus, initState, isReadOnly, undo, canUndo, undoLabel, onUndoChange, adoptSaved, STORAGE_KEY } from './store.js';
 import { toast, downloadBlob, safeFileName, fontsReady } from './io.js';
 import { createState, parseState, serializeState, hasContent } from '../core/state.js';
 import { renderSetup, setupSetupView } from './setupView.js';
@@ -182,6 +182,8 @@ function init() {
   setupShareDialog();
   onChange(render);
   onShareChange(updateShareUi);
+  // 同じブラウザの別のタブ・ウィンドウで保存されたら、その内容に合わせる（古い画面の操作で、新しい変更を上書きしないため）
+  window.addEventListener('storage', (e) => { if (e.key === STORAGE_KEY) adoptSaved(e.newValue); });
   let tab = 'setup';
   try { tab = sessionStorage.getItem(TAB_KEY) || 'setup'; } catch { /* 無視 */ }
   initShare();
