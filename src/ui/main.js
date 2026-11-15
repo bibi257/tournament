@@ -2,7 +2,7 @@
 
 import { getState, setState, onChange, onSaveStatus, initState, isReadOnly, undo, canUndo, undoLabel, onUndoChange } from './store.js';
 import { toast, downloadBlob, safeFileName, fontsReady } from './io.js';
-import { createState, parseState, serializeState } from '../core/state.js';
+import { createState, parseState, serializeState, hasContent } from '../core/state.js';
 import { renderSetup, setupSetupView } from './setupView.js';
 import { renderTournament, setupTournamentView } from './tournamentView.js';
 import { renderLeague, setupLeagueView } from './leagueView.js';
@@ -95,8 +95,11 @@ function onUndoKey(e) {
   doUndo();
 }
 
-function hasData(st) {
-  return st.players.length > 0 || st.tournament || st.league;
+/** 「新規」「読込」の確認に足す注意。過去の大会も一緒に置き換わること、共有中は公開している内容も置き換わること */
+function replaceNotes(st, pastNote, shareNote) {
+  const past = st.history?.length ?? 0;
+  return (past ? `\n※過去の大会（${past}回分）も${pastNote}。` : '')
+    + (isAdmin() ? `\n※共有中のため、公開している大会データも${shareNote}。` : '');
 }
 
 function saveFile() {
@@ -110,9 +113,10 @@ async function loadFile(file) {
   if (isReadOnly()) return;
   const r = parseState(await file.text());
   if (!r.ok) { toast(`読み込めませんでした: ${r.error}`, { error: true }); return; }
-  if (hasData(getState()) && !confirm('今の大会データを、読み込んだデータで置き換えますか？')) return;
+  const cur = getState();
+  if (hasContent(cur) && !confirm(`今の大会データを、読み込んだデータで置き換えますか？${replaceNotes(cur, '読み込んだ内容に置き換わります', '読み込んだ内容に置き換わります')}`)) return;
   setState(r.state);
-  toast(`「${r.state.meta.title}」を読み込みました`);
+  toast(`「${eventTitle(r.state)}」を読み込みました`);
 }
 
 function setupHeader() {
@@ -124,8 +128,8 @@ function setupHeader() {
     const act = e.target.closest('button[data-action]')?.dataset.action;
     if (act === 'share') openShareDialog();
     else if (act === 'new') {
-      const note = isAdmin() ? '\n※共有中のため、公開している大会データも新しい内容に置き換わります。' : '';
-      if (hasData(getState()) && !confirm(`今の大会データを消して新しく始めますか？\n（必要なら先に「保存」でファイルに保存してください）${note}`)) return;
+      const cur = getState();
+      if (hasContent(cur) && !confirm(`今の大会データを消して新しく始めますか？\n（必要なら先に「保存」でファイルに保存してください）${replaceNotes(cur, '消えます', '新しい内容に置き換わります')}`)) return;
       setState(createState());
       showTab('setup');
       toast('新しい大会を作成しました');

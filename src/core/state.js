@@ -41,6 +41,11 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isStr = (v) => typeof v === 'string';
 
 /** 参加者・卓・試合の ID。画面の HTML 属性に入るため、英数字と - _ だけを許す */
+/** 消すと失うものがあるか（名簿・表・過去の大会）。「新規」「読込」で置き換える前の確認に使う */
+export function hasContent(st) {
+  return st.players.length > 0 || !!st.tournament || !!st.league || (st.history?.length ?? 0) > 0;
+}
+
 export const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const isId = (v) => isStr(v) && ID_PATTERN.test(v);
 

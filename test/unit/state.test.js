@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createState, parseState, serializeState, playerName, defaultSettings } from '../../src/core/state.js';
+import { createState, parseState, serializeState, playerName, defaultSettings, hasContent } from '../../src/core/state.js';
 import { makePlayers, validatePlayers, resizeTables, movePlayer, nameKey } from '../../src/core/players.js';
 import { generateTournament, setTournamentResult } from '../../src/core/bracket.js';
 import { generateLeague } from '../../src/core/league.js';
@@ -216,4 +216,18 @@ test('名前・卓名・大会名は、長さ・改行・双方向の制御文�
   assert.equal(r.state.players[1].name, '山田 太郎');
   assert.equal(r.state.tables[0].name.length, 20);
   assert.equal(r.state.meta.title.length, 60);
+});
+
+test('hasContent: 名簿・表・過去の大会のどれかがあれば、置き換える前に確認が要る', () => {
+  const empty = createState();
+  assert.equal(hasContent(empty), false);
+  assert.equal(hasContent({ ...empty, players: makePlayers(['山田']) }), true);
+  const ids = ['a', 'b'];
+  assert.equal(hasContent({ ...empty, tournament: generateTournament(ids) }), true);
+  assert.equal(hasContent({ ...empty, league: generateLeague(ids) }), true);
+  // 名簿も表も空でも、過去の大会が残っていれば確認する（「全員削除」のあとの「新規」で、過去の大会が消えないように）
+  assert.equal(hasContent({ ...empty, history: [{ edition: 1 }] }), true);
+  // 古い形（history が無い）でも落ちない
+  const { history: _drop, ...old } = empty;
+  assert.equal(hasContent(old), false);
 });
