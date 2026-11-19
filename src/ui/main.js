@@ -1,8 +1,8 @@
 // エントリポイント: タブ切替・ヘッダー操作・保存/読込
 
-import { getState, setState, onChange, onSaveStatus, initState, isReadOnly, undo, canUndo, undoLabel, onUndoChange } from './store.js';
+import { getState, setState, onChange, onSaveStatus, initState, isReadOnly, undo, canUndo, undoLabel, onUndoChange, adoptSaved, STORAGE_KEY } from './store.js';
 import { toast, downloadBlob, safeFileName, fontsReady } from './io.js';
-import { createState, parseState, serializeState } from '../core/state.js';
+import { createState, parseState, serializeState, hasContent } from '../core/state.js';
 import { renderSetup, setupSetupView } from './setupView.js';
 import { renderTournament, setupTournamentView } from './tournamentView.js';
 import { renderLeague, setupLeagueView } from './leagueView.js';
@@ -19,7 +19,7 @@ import { setupExportMenus } from './exportMenu.js';
 import { renderMyPanel, setupMyMatch } from './myMatch.js';
 import { updateElapsed, setupElapsedTimer } from './startMatch.js';
 import { eventTitle } from '../core/edition.js';
-import { S, initShare, isSharing, isViewer, isAdmin, onShareChange, openShareDialog, setupShareDialog } from './share.js';
+import { S, initShare, isSharing, isViewer, isAdmin, onShareChange, openShareDialog, setupShareDialog, schedulePush } from './share.js';
 
 const TABS = { setup: renderSetup, tournament: renderTournament, league: renderLeague, standings: renderStandings, comments: renderComments };
 const TAB_KEY = 'bukatsu-taikai:tab';
@@ -95,8 +95,27 @@ function onUndoKey(e) {
   doUndo();
 }
 
-function hasData(st) {
-  return st.players.length > 0 || st.tournament || st.league;
+/**
+ * 開いた時点の大会データをもとに、閉じるときに保存するダイアログ（結果入力・組み合わせの確認・選択）。
+ * 開いているあいだに別のタブの内容を取り込んだら閉じる（そのまま保存すると、開いた時点の古い表を書き戻し、別のタブの変更を消すため）
+ */
+const STALE_DIALOGS = ['result-dialog', 'pairing-dialog', 'choice-dialog'];
+
+/** 別のタブ・ウィンドウで保存された内容を取り込む */
+function onOtherTabSaved(raw) {
+  if (!adoptSaved(raw)) return;
+  const open = STALE_DIALOGS.map((id) => document.getElementById(id)).filter((d) => d?.open);
+  open.forEach((d) => d.close());
+  if (open.length) toast('別のタブで大会データが変わったため、入力を閉じました。もう一度開いてください', { error: true });
+  // 保存したタブが、運営のセッションを持たないことがある（共有を始める前から開いていたタブ）。運営のこの画面から公開する
+  schedulePush();
+}
+
+/** 「新規」「読込」の確認に足す注意。過去の大会も一緒に置き換わること、共有中は公開している内容も置き換わること */
+function replaceNotes(st, pastNote, shareNote) {
+  const past = st.history?.length ?? 0;
+  return (past ? `\n※過去の大会（${past}回分）も${pastNote}。` : '')
+    + (isAdmin() ? `\n※共有中のため、公開している大会データも${shareNote}。` : '');
 }
 
 function saveFile() {
@@ -110,9 +129,10 @@ async function loadFile(file) {
   if (isReadOnly()) return;
   const r = parseState(await file.text());
   if (!r.ok) { toast(`読み込めませんでした: ${r.error}`, { error: true }); return; }
-  if (hasData(getState()) && !confirm('今の大会データを、読み込んだデータで置き換えますか？')) return;
+  const cur = getState();
+  if (hasContent(cur) && !confirm(`今の大会データを、読み込んだデータで置き換えますか？${replaceNotes(cur, '読み込んだ内容に置き換わります', '読み込んだ内容に置き換わります')}`)) return;
   setState(r.state);
-  toast(`「${r.state.meta.title}」を読み込みました`);
+  toast(`「${eventTitle(r.state)}」を読み込みました`);
 }
 
 function setupHeader() {
@@ -124,8 +144,8 @@ function setupHeader() {
     const act = e.target.closest('button[data-action]')?.dataset.action;
     if (act === 'share') openShareDialog();
     else if (act === 'new') {
-      const note = isAdmin() ? '\n※共有中のため、公開している大会データも新しい内容に置き換わります。' : '';
-      if (hasData(getState()) && !confirm(`今の大会データを消して新しく始めますか？\n（必要なら先に「保存」でファイルに保存してください）${note}`)) return;
+      const cur = getState();
+      if (hasContent(cur) && !confirm(`今の大会データを消して新しく始めますか？\n（必要なら先に「保存」でファイルに保存してください）${replaceNotes(cur, '消えます', '新しい内容に置き換わります')}`)) return;
       setState(createState());
       showTab('setup');
       toast('新しい大会を作成しました');
@@ -178,6 +198,8 @@ function init() {
   setupShareDialog();
   onChange(render);
   onShareChange(updateShareUi);
+  // 同じブラウザの別のタブ・ウィンドウで保存されたら、その内容に合わせる（古い画面の操作で、新しい変更を上書きしないため）
+  window.addEventListener('storage', (e) => { if (e.key === STORAGE_KEY) onOtherTabSaved(e.newValue); });
   let tab = 'setup';
   try { tab = sessionStorage.getItem(TAB_KEY) || 'setup'; } catch { /* 無視 */ }
   initShare();

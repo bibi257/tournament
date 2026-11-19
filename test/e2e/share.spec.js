@@ -176,6 +176,9 @@ test('運営用パスワードを変えても閲覧は続く。共有を終了�
   await expect(a.locator('#sh-error')).toContainText('違います');
   await a.fill('#sh-apw2', 'new-admin-pass');
   await a.click('[data-sh=admin]');
+  // 公開済みのデータがあるので、どちらの内容で続けるかを選ぶ（最初の選択肢は「公開済みの内容を読み込む」）
+  await expect(a.locator('#choice-dialog')).toBeVisible();
+  await a.click('#ch-ok');
   await expect(a.locator('.sh-code')).toHaveText(code);
 
   // 共有を終了
@@ -591,4 +594,81 @@ test('運営は、閲覧リンクのQRコードを大きく表示でき、PNGで
   await expect(v.locator('[data-sh=qr]')).toHaveCount(0);
   await admin.close();
   await viewer.close();
+});
+
+test('送信の応答が返らないときは、時間切れで「通信エラー」になり、通信が戻ると自動で送り直す', async ({ browser, request }) => {
+  const admin = await browser.newContext();
+  await withIp(admin, '10.0.9.1');
+  const a = await admin.newPage();
+  acceptDialogs(a);
+  await a.clock.install();
+  await open(a);
+  await importNames(a, ['山田 太郎']);
+  const code = await startShare(a);
+  await a.click('#sh-close');
+  await expect(a.locator('#share-chip')).toContainText('共有中');
+  const viewer = await (await request.post(`/api/rooms/${code}/join`, { headers: { 'x-test-ip': '10.0.9.2' } })).json();
+  const names = async () => {
+    const r = await (await request.get(`/api/rooms/${code}/sync?rev=-1&crev=-1`, { headers: { 'x-test-ip': '10.0.9.2', Authorization: `Bearer ${viewer.token}` } })).json();
+    return r.state.players.map((p) => p.name);
+  };
+  expect(await names()).toEqual(['山田 太郎']);
+
+  // 大会データの送信だけ、応答を返さない（電波の切り替えなどで止まった状態）
+  let hung = 0;
+  await a.route('**/api/rooms/*/state', () => { hung++; });
+  await importNames(a, ['佐藤 花子']);
+  await a.clock.runFor(2000); // 変更の1.5秒後に送信が始まる
+  await expect(a.locator('#share-chip')).toContainText('送信中');
+  expect(hung).toBe(1);
+
+  // 20秒で時間切れ。送信中のままにならず、理由つきの「通信エラー」になる
+  // （途中の定期の更新（15秒）の応答を待ってから進める。応答が時間切れのあとに届くと、表示が「共有中」に戻って見分けられないため）
+  const polled = a.waitForResponse((r) => r.url().includes('/sync'));
+  await a.clock.runFor(16000);
+  await polled;
+  await expect(a.locator('#share-chip')).toContainText('送信中');
+  await a.clock.runFor(6000);
+  await expect(a.locator('#share-chip')).toContainText('通信エラー');
+  await expect(a.locator('#share-chip')).toHaveAttribute('title', /応答がありません/);
+  expect(await names()).toEqual(['山田 太郎']);
+
+  // 通信が戻ると、次の定期の更新（15秒ごと）のあとに、止まっていた変更が自動で送られる
+  await a.unroute('**/api/rooms/*/state');
+  await expect(async () => {
+    await a.clock.runFor(5000);
+    expect(await names()).toEqual(['山田 太郎', '佐藤 花子']);
+  }).toPass({ timeout: 15000 });
+  await expect(a.locator('#share-chip')).toContainText('共有中');
+  await admin.close();
+});
+
+// 共有を始める前から開いていたタブは、運営のセッションを持たない。そのタブで編集すると、
+// 運営のタブは表示を合わせるだけで送信せず、閲覧者に届かなかった（レビューの指摘 R-02）
+test('共有を始める前から開いていた別のタブで編集しても、運営のタブが取り込んで公開する', async ({ browser, request }) => {
+  const ctx = await browser.newContext();
+  await withIp(ctx, '10.0.9.11');
+  const other = await ctx.newPage();
+  acceptDialogs(other);
+  await open(other);
+  await importNames(other, ['山田 太郎']);
+  const adminPage = await ctx.newPage();
+  acceptDialogs(adminPage);
+  await adminPage.goto('/');
+  await expect(adminPage.locator('#player-count')).toHaveText('1人');
+  const code = await startShare(adminPage);
+  await adminPage.click('#sh-close');
+  const viewer = await (await request.post(`/api/rooms/${code}/join`, { headers: { 'x-test-ip': '10.0.9.12' } })).json();
+  const names = async () => {
+    const r = await (await request.get(`/api/rooms/${code}/sync?rev=-1&crev=-1`, { headers: { 'x-test-ip': '10.0.9.12', Authorization: `Bearer ${viewer.token}` } })).json();
+    return r.state.players.map((p) => p.name);
+  };
+  await expect.poll(names).toEqual(['山田 太郎']);
+
+  // 共有のセッションを持たないタブで1人足す → 運営のタブが取り込み、公開する
+  await expect(other.locator('#share-chip')).toBeHidden();
+  await importNames(other, ['佐藤 花子']);
+  await expect(adminPage.locator('#player-count')).toHaveText('2人');
+  await expect.poll(names, { timeout: 10000 }).toEqual(['山田 太郎', '佐藤 花子']);
+  await ctx.close();
 });

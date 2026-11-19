@@ -116,6 +116,25 @@ export function reloadLocal() {
   listeners.forEach((f) => f());
 }
 
+/**
+ * 別のタブ・ウィンドウで保存された内容を、この画面に取り込む。
+ * 同じブラウザで2つ開いているとき、古い内容のままの画面で操作すると、もう片方の変更を上書きして消してしまうため。
+ * 閲覧専用のあいだ（共有・過去の大会を見ている）は取り込まない（戻るときに reloadLocal が自動保存から読み直す）。
+ * 取り込んでも自動保存はし直さない（保存した側の画面が書いた内容を、書き直さない）。共有への送信は呼び出し側が予約する
+ * （保存した側の画面が運営のセッションを持たないことがあるため。main.js）。「元に戻す」の履歴は、別の内容になるので引き継がない。
+ * @param {string|null} raw 自動保存の中身（storage イベントの newValue）
+ * @returns {boolean} 取り込んだか
+ */
+export function adoptSaved(raw) {
+  if (readOnly || typeof raw !== 'string') return false;
+  const r = parseState(raw);
+  if (!r.ok) return false;
+  state = r.state;
+  clearUndo();
+  listeners.forEach((f) => f());
+  return true;
+}
+
 export function onSaveStatus(cb) {
   statusCb = cb;
 }

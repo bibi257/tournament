@@ -147,3 +147,43 @@ test('画面の見出し（印刷・タブ名）に回が付き、過去の回�
   await page.click('#edition-banner [data-edition=back]');
   await expect(page.locator('#print-title')).toHaveText('部内大会 第2回');
 });
+
+test('名簿を空にしたあとでも、過去の大会が残っていれば「新規」「読込」で確認が出る', async ({ page }) => {
+  const messages = [];
+  let accept = true;
+  page.on('dialog', async (d) => {
+    messages.push(d.message());
+    if (accept) await d.accept(); else await d.dismiss();
+  });
+  await open(page);
+  await importNames(page, FOUR);
+  await playTournament(page);
+  await page.click('.tabs [data-tab=tournament]');
+  await page.click('.progress [data-edition=next]');
+  await expect(page.locator('#editions-card')).toContainText('今は第2回大会');
+  const file = await download(page, '[data-action=save]');
+
+  // 名簿を空にする（表も無い）。残っているのは過去の大会だけ
+  await page.click('[data-act=clear-players]');
+  await expect(page.locator('#player-count')).toHaveText('0人');
+  await expect(page.locator('table.editions tbody tr')).toHaveCount(1);
+
+  // 新規: 確認が出て、過去の大会も消えると書いてある。キャンセルすると残る
+  accept = false;
+  await page.click('[data-action=new]');
+  expect(messages.at(-1)).toContain('今の大会データを消して新しく始めますか？');
+  expect(messages.at(-1)).toContain('過去の大会（1回分）も消えます');
+  await expect(page.locator('table.editions tbody tr')).toHaveCount(1);
+
+  // 読込: 確認が出て、キャンセルすると残る
+  await page.setInputFiles('#load-file', { name: 'x.json', mimeType: 'application/json', buffer: file.bytes });
+  await expect.poll(() => messages.at(-1)).toContain('読み込んだデータで置き換えますか？');
+  expect(messages.at(-1)).toContain('過去の大会（1回分）も読み込んだ内容に置き換わります');
+  await expect(page.locator('#player-count')).toHaveText('0人');
+
+  // OK すると読み込まれ、通知の大会名には「第N回」が付く
+  accept = true;
+  await page.setInputFiles('#load-file', { name: 'x.json', mimeType: 'application/json', buffer: file.bytes });
+  await expect(page.locator('#player-count')).toHaveText('4人');
+  await expect(page.locator('#toast')).toContainText('第2回');
+});

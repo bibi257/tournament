@@ -8,6 +8,7 @@ import { getState, setState, setReadOnly, setRemoteState, reloadLocal, onSaved }
 import { toast, h } from './io.js';
 import { createState, parseState } from '../core/state.js';
 import { openQr } from './qrDialog.js';
+import { askChoice } from './choiceDialog.js';
 import { normalizeBase, defaultBase, normalizeCode, viewerLink, codeFromHash, PASSWORD_MIN, decideJoin } from '../core/share.js';
 import { fitForShare } from '../core/edition.js';
 
@@ -16,6 +17,8 @@ const NAME_KEY = 'bukatsu-taikai:comment-name';
 const POLL_MS = 15000;
 const PUSH_DELAY_MS = 1500;
 const PUSH_RETRY_MS = 60 * 1000; // 送信の上限に達したときの、送り直しまでの時間
+const REQUEST_TIMEOUT_MS = 20 * 1000; // 1回の通信で、応答を待つ時間の上限
+const TIMEOUT_MESSAGE = '共有サーバーから応答がありません。通信状況を確認してください';
 
 /** 画面が読む共有の状態 */
 export const S = {
@@ -83,17 +86,25 @@ class ShareError extends Error {
 }
 
 async function request(base, method, path, { token, body } = {}) {
+  // 応答を待つ時間に上限を置く。応答が返らないまま待ち続けると、送信中の印が消えず、以後の送信と更新がすべて止まるため
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS);
   let res;
+  let data;
   try {
     res = await fetch(base + path, {
       method,
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: ctl.signal,
     });
+    data = await res.json().catch(() => null);
   } catch {
-    throw new ShareError(0, '共有サーバーに接続できませんでした。通信状況とサーバーURLを確認してください');
+    throw new ShareError(0, ctl.signal.aborted ? TIMEOUT_MESSAGE : '共有サーバーに接続できませんでした。通信状況とサーバーURLを確認してください');
+  } finally {
+    clearTimeout(timer);
   }
-  const data = await res.json().catch(() => null);
+  if (ctl.signal.aborted) throw new ShareError(0, TIMEOUT_MESSAGE); // 本文を読んでいる途中で時間切れ
   if (!res.ok || !data?.ok) throw new ShareError(res.status, data?.error || `サーバーの応答が正しくありません（${res.status}）`);
   return data;
 }
@@ -174,21 +185,36 @@ async function joinViewer({ base, code }) {
 
 async function joinAdmin(args) {
   const data = await loginAdmin(args);
+  // 先に公開済みの内容を確かめる。運営セッションは、どうするかが決まってから始める
+  // （決まる前に画面を閉じても、この端末に運営セッションが残らず、公開済みのデータに触れない）
+  const r = await request(args.base, 'GET', `/api/rooms/${data.code}/sync?rev=-1&crev=-1`, { token: data.token });
+  const parsed = r.state ? parseState(r.state) : null;
+  const decision = decideJoin(r.state, parsed);
+  if (decision === 'blocked') {
+    // 読めないデータを上書きしない。運営セッションを始めずに、理由を出す
+    toast('共有の大会データが、このアプリでは読めません。アプリを更新してから、もう一度お試しください');
+    return;
+  }
+  // どちらの内容で続けるかは、選んでもらう。キャンセル・Esc では、どちらも変えずに運営ログインを取りやめる
+  // （confirm の「キャンセル＝この端末の内容で公開し直す」だと、閉じただけで公開済みのデータが置き換わるため）
+  const choice = decision === 'ask' ? await askChoice({
+    title: 'この共有には、公開済みの大会データがあります',
+    body: 'どちらの内容で続けるかを選んでください。キャンセルすると、どちらも変えずに運営ログインを取りやめます。',
+    options: [
+      { value: 'load', label: '公開済みの内容を、この端末に読み込む', hint: 'この端末の今の大会データは、公開済みの内容に置き換わります' },
+      { value: 'push', label: 'この端末の内容で公開し直す', hint: '公開済みの大会データは、この端末の内容に置き換わります' },
+    ],
+  }) : 'push';
+  if (choice === null) {
+    toast('運営ログインを取りやめました。公開済みの大会データは変えていません');
+    return;
+  }
   useSession(args.base, data, 'admin');
-  const r = await call('GET', '/sync?rev=-1&crev=-1');
   S.rev = r.rev;
   S.crev = r.crev;
   S.comments = r.comments || [];
   S.reports = r.reports || [];
-  const parsed = r.state ? parseState(r.state) : null;
-  const decision = decideJoin(r.state, parsed);
-  if (decision === 'blocked') {
-    // 読めないデータを上書きしない。運営セッションを捨て（disconnect と同じ後始末）、理由を出す
-    disconnect();
-    toast('共有の大会データが、このアプリでは読めません。アプリを更新してから、もう一度お試しください');
-    return;
-  }
-  if (decision === 'ask' && confirm('この共有に公開済みの大会データがあります。\n\nOK: 公開済みの内容をこの端末に読み込む\nキャンセル: この端末の内容で公開し直す')) {
+  if (choice === 'load') {
     // 共有には過去の回を全部は載せないことがあるため、この端末の過去の回のほうが多ければそれを残す
     const mine = getState().history ?? [];
     setState({ ...parsed.state, history: mine.length >= parsed.state.history.length ? mine : parsed.state.history });
@@ -260,7 +286,8 @@ export async function pushNow() {
   if (dirty && S.status === 'ok') schedulePush();
 }
 
-function schedulePush() {
+/** 運営なら、今の大会データの送信を予約する（少し待ってまとめて送る）。別のタブから取り込んだ内容を公開するときにも使う */
+export function schedulePush() {
   if (!isAdmin() || S.status === 'auth') return;
   dirty = true;
   clearTimeout(pushTimer);
