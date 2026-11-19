@@ -286,7 +286,8 @@ export async function pushNow() {
   if (dirty && S.status === 'ok') schedulePush();
 }
 
-function schedulePush() {
+/** 運営なら、今の大会データの送信を予約する（少し待ってまとめて送る）。別のタブから取り込んだ内容を公開するときにも使う */
+export function schedulePush() {
   if (!isAdmin() || S.status === 'auth') return;
   dirty = true;
   clearTimeout(pushTimer);

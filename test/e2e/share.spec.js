@@ -642,3 +642,33 @@ test('送信の応答が返らないときは、時間切れで「通信エラ�
   await expect(a.locator('#share-chip')).toContainText('共有中');
   await admin.close();
 });
+
+// 共有を始める前から開いていたタブは、運営のセッションを持たない。そのタブで編集すると、
+// 運営のタブは表示を合わせるだけで送信せず、閲覧者に届かなかった（レビューの指摘 R-02）
+test('共有を始める前から開いていた別のタブで編集しても、運営のタブが取り込んで公開する', async ({ browser, request }) => {
+  const ctx = await browser.newContext();
+  await withIp(ctx, '10.0.9.11');
+  const other = await ctx.newPage();
+  acceptDialogs(other);
+  await open(other);
+  await importNames(other, ['山田 太郎']);
+  const adminPage = await ctx.newPage();
+  acceptDialogs(adminPage);
+  await adminPage.goto('/');
+  await expect(adminPage.locator('#player-count')).toHaveText('1人');
+  const code = await startShare(adminPage);
+  await adminPage.click('#sh-close');
+  const viewer = await (await request.post(`/api/rooms/${code}/join`, { headers: { 'x-test-ip': '10.0.9.12' } })).json();
+  const names = async () => {
+    const r = await (await request.get(`/api/rooms/${code}/sync?rev=-1&crev=-1`, { headers: { 'x-test-ip': '10.0.9.12', Authorization: `Bearer ${viewer.token}` } })).json();
+    return r.state.players.map((p) => p.name);
+  };
+  await expect.poll(names).toEqual(['山田 太郎']);
+
+  // 共有のセッションを持たないタブで1人足す → 運営のタブが取り込み、公開する
+  await expect(other.locator('#share-chip')).toBeHidden();
+  await importNames(other, ['佐藤 花子']);
+  await expect(adminPage.locator('#player-count')).toHaveText('2人');
+  await expect.poll(names, { timeout: 10000 }).toEqual(['山田 太郎', '佐藤 花子']);
+  await ctx.close();
+});
