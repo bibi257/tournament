@@ -84,3 +84,14 @@ test('名簿取込: タブ区切りは、見出しがあるときだけ列に分
   // カンマ区切りの見出しは、これまでどおり
   assert.deepEqual(namesFromCSV('学年,氏名\n1,山田'), ['山田']);
 });
+
+test('CSV: 終わりまで閉じない囲みの引用符は、文字として読み直す（後ろの行を飲み込まない）', () => {
+  assert.deepEqual(parseCSV('"山田,1年\n佐藤,2年\n鈴木,3年\n'), [['"山田', '1年'], ['佐藤', '2年'], ['鈴木', '3年']]);
+  assert.deepEqual(namesFromCSV('"山田,1年\n佐藤,2年\n鈴木,3年\n'), ['"山田', '佐藤', '鈴木']);
+  // 途中の行の、閉じない囲み
+  assert.deepEqual(namesFromCSV('山田\n"佐藤\n鈴木'), ['山田', '"佐藤', '鈴木']);
+  // 閉じない囲みが3つあると、前の2つは対（1つの囲み）になり、最後の1つだけが文字になる
+  assert.deepEqual(parseCSV('"a\n"b\n"c,d'), [['a\nb'], ['"c', 'd']]);
+  // 閉じた囲みは、これまでどおり（改行を含むセル）
+  assert.deepEqual(parseCSV('"a\nb",c\nd,e'), [['a\nb', 'c'], ['d', 'e']]);
+});

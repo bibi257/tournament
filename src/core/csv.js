@@ -27,11 +27,24 @@ export function toCSV(rows, { bom = true } = {}) {
 
 /**
  * RFC 4180 形式の CSV を解析する。区切りは既定でカンマ（タブ区切りのテキストは delimiter に '\t'）。
- * 引用符（"）は、セルの先頭にあるときだけ囲みの始まりとみなす。途中の " は、そのままの文字として読む
- * （途中の " を囲みの始まりにすると、閉じる " が無いとき、後ろの行がすべて1つのセルに入ってしまう）。
+ * 引用符（"）は、セルの先頭（前に空白だけがあるときも含む。その空白は捨てる）にあるときだけ囲みの始まりとみなす。
+ * 途中の " と、終わりまで閉じない囲みの " は、そのままの文字として読む
+ * （囲みとみなすと、閉じる " が無いとき、後ろの行がすべて1つのセルに入ってしまう）。
  */
 export function parseCSV(text, delimiter = ',') {
   const src = text.startsWith(BOM) ? text.slice(1) : text;
+  // 終わりまで閉じない囲みがあれば、その引用符を文字として読み直す（閉じない " で、後ろの行がすべて1つのセルになるため）
+  const literal = new Set();
+  for (;;) {
+    const r = parseOnce(src, delimiter, literal);
+    if (r.unclosedAt < 0) return r.rows;
+    literal.add(r.unclosedAt);
+  }
+}
+
+/** parseCSV の1回分。literal にある位置の引用符は、文字として読む。閉じない囲みの始まりの位置を unclosedAt に返す（無ければ -1） */
+function parseOnce(src, delimiter, literal) {
+  let openAt = -1;
   const rows = [];
   let row = [];
   let cell = '';
@@ -42,8 +55,9 @@ export function parseCSV(text, delimiter = ',') {
       if (c === '"') {
         if (src[i + 1] === '"') { cell += '"'; i++; } else inQuotes = false;
       } else cell += c;
-    } else if (c === '"' && cell.trim() === '') {
+    } else if (c === '"' && cell.trim() === '' && !literal.has(i)) {
       inQuotes = true;
+      openAt = i;
       cell = '';
     } else if (c === delimiter) {
       row.push(cell); cell = '';
@@ -53,7 +67,7 @@ export function parseCSV(text, delimiter = ',') {
     } else cell += c;
   }
   if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
-  return rows;
+  return { rows, unclosedAt: inQuotes ? openAt : -1 };
 }
 
 /**
